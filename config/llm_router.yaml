@@ -1,0 +1,238 @@
+# LLM Provider Router Configuration
+# Provider priority: codex_cli (gemini_cli EOL — disabled)
+# Claude/OpenAI API and Ollama fallback are disabled for CLI-only operation.
+
+# Cost guard defaults live in config/video_defaults.yaml.
+# ALLOW_* env vars override them at runtime.
+cost_guard:
+  allow_claude_api_default: false
+  fast_path_timeout_sec: 300  # FAST_LLM_CALL_TIMEOUT_SEC env var overrides this
+
+providers:
+  gemini_cli:
+    enabled: false  # EOL — binary exists at cli_path but returns "not supported"; disabled to prevent 300s timeout waste
+    cli_path: /opt/homebrew/bin/gemini
+    model: gemini-2.5-flash
+    timeout_sec: 300
+    fast_path_timeout_sec: 120
+    best_for:
+      - long_context
+      - summarization
+      - creative_writing
+      - korean_narration
+    avoid:
+      - strict_json
+      - vision
+
+  codex_cli:
+    enabled: true
+    cli_path: /opt/homebrew/bin/codex
+    timeout_sec: 300
+    fast_path_timeout_sec: 120
+    best_for:
+      - code_generation
+      - structured_output
+      - json_formatting
+    avoid:
+      - long_creative
+
+  claude_api:
+    enabled: false  # legacy provider; excluded from CLI-only provider_order
+    models:
+      default: claude-haiku-4-5-20251001
+      high: claude-sonnet-4-6
+    timeout_sec: 60
+    best_for:
+      - strict_json
+      - vision
+      - high_quality_writing
+      - critique
+    avoid: []
+
+  openai_api:
+    enabled: false  # legacy provider; excluded from CLI-only provider_order
+    model: gpt-4o-mini
+    timeout_sec: 60
+    best_for:
+      - fallback_general
+      - json_formatting
+    avoid: []
+
+  ollama:
+    enabled: false  # legacy local provider; last_resort disabled for all roles
+    host: "${OLLAMA_HOST:-http://localhost:11434}"
+    models:
+      light: "${OLLAMA_MODEL_LIGHT:-gemma4:e4b}"
+    timeout_sec: 300
+    fast_path_timeout_sec: 60
+    num_ctx: 16384
+    temperature: 0.5
+    top_p: 0.9
+    best_for:
+      - low_value_summary
+      - draft_only
+    avoid:
+      - final_script
+      - scene_planning
+      - strict_json
+      - visual_summary_final
+      - korean_narration_final
+
+# Role routing policies
+# provider_order: ordered list of providers to try
+# last_resort: CLI-only policy keeps this false for all roles
+# ollama_only: legacy compat only; do not enable in CLI-only operation
+# quality_min: minimum output char length to accept
+roles:
+  writer_high:
+    description: "고품질 대본 재생성"
+    provider_order: [gemini_cli, codex_cli]
+    last_resort: false
+    timeout_sec: 300
+    quality_min: 500
+
+  polisher:
+    description: "대본 폴리싱 (diff-patch)"
+    provider_order: [gemini_cli, codex_cli]
+    last_resort: false
+    timeout_sec: 300
+    quality_min: 200
+
+  light:
+    description: "씬 분할 / 경량 처리"
+    provider_order: [gemini_cli, codex_cli]
+    last_resort: false
+    timeout_sec: 120
+    quality_min: 50
+
+  fast_scene:
+    description: "FAST_PATH 씬 직접 생성 (claude_api/ollama 제외)"
+    provider_order: [gemini_cli, codex_cli]
+    last_resort: false
+    timeout_sec: 300
+    quality_min: 50
+
+  visual_summarizer:
+    description: "시각 요약 (비최종)"
+    provider_order: [gemini_cli, codex_cli]
+    last_resort: false
+    timeout_sec: 180
+    quality_min: 50
+
+  judge:
+    description: "품질 평가 (JSON 점수)"
+    provider_order: [gemini_cli, codex_cli]
+    last_resort: false
+    timeout_sec: 180
+    quality_min: 50
+
+  vision_judge:
+    description: "비전 기반 평가 (CLI-only: API vision disabled)"
+    provider_order: [gemini_cli, codex_cli]
+    last_resort: false
+    timeout_sec: 180
+    quality_min: 50
+
+  summarizer:
+    description: "스크립트 요약"
+    provider_order: [gemini_cli, codex_cli]
+    last_resort: false
+    timeout_sec: 180
+    quality_min: 2
+    json_quality_check: true
+
+  critic:
+    description: "비평 / 피드백"
+    provider_order: [gemini_cli, codex_cli]
+    last_resort: false
+    timeout_sec: 300
+    quality_min: 100
+
+  regenerator:
+    description: "섹션 재생성"
+    provider_order: [gemini_cli, codex_cli]
+    last_resort: false
+    timeout_sec: 300
+    quality_min: 200
+
+  json_formatter:
+    description: "JSON 정형화"
+    provider_order: [codex_cli, gemini_cli]
+    last_resort: false
+    timeout_sec: 120
+    quality_min: 10
+
+  low_value_summary:
+    description: "저가치 요약 (로그/메타)"
+    provider_order: [gemini_cli, codex_cli]
+    last_resort: false
+    timeout_sec: 180
+    quality_min: 10
+
+  motion_spec:
+    description: "AI Motion Mode — Scene Plan → Motion Spec JSON (TSX 생성 금지)"
+    provider_order: [codex_cli, gemini_cli]
+    last_resort: false
+    timeout_sec: 120
+    quality_min: 50
+    json_quality_check: true
+
+  topic_guard:
+    description: "씬 주제 적합성 검증 (LLM 의미 기반)"
+    provider_order: [codex_cli, gemini_cli]
+    last_resort: false
+    timeout_sec: 120
+    quality_min: 10
+    json_quality_check: true
+
+  content_repair:
+    description: "콘텐츠 수리 — 반복/저밀도/누락 개념 보정"
+    provider_order: [codex_cli, gemini_cli]
+    last_resort: false
+    timeout_sec: 180
+    quality_min: 50
+    json_quality_check: true
+
+# Fallback error conditions that trigger provider switch
+fallback_triggers:
+  - rate_limit
+  - quota_exceeded
+  - model_not_found
+  - timeout
+  - invalid_json
+  - empty_output
+  - quality_check_fail
+  - cli_not_found
+  - nonzero_exit
+
+# Scene budget — target_duration_sec → max_scene_count mapping
+# Used by pipelines/scene_budget.py
+scene_budget:
+  enabled: true
+  default_target_duration_sec: 60
+  budget_map:
+    - [30,  5]
+    - [60,  8]
+    - [90,  12]
+    - [120, 16]
+    - [180, 20]
+    - [300, 28]
+  enforce_on_pipeline: true
+
+# Usage logging
+logging:
+  enabled: true
+  dir: logs/llm_usage
+  format: jsonl
+  fields:
+    - task_id
+    - role
+    - provider
+    - model
+    - status
+    - input_chars
+    - output_chars
+    - estimated_cost_krw
+    - duration_sec
+    - error_type
+    - timestamp

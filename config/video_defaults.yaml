@@ -1,0 +1,32 @@
+# AI-Video 파이프라인 기본 설정
+# run_pipeline.py가 이 파일을 로드한다.
+# TASK-PIPELINE-FIXPACK-IMPLEMENT-001
+
+generation:
+  mode: template  # template | ai_motion | auto
+  # 환경변수 GENERATION_MODE 로 오버라이드 가능
+
+ai_motion:
+  enabled: false
+
+  providers:
+    primary: codex_cli
+    secondary: gemini_cli
+
+  audit:
+    enabled: true
+
+tts:
+  speed: 1.2          # 속도 배율 (1.0 = 보통, 1.2 = 20% 빠름)
+
+cost_guard:
+  allow_openai_api: false
+  allow_claude_api: false
+  allow_gemini_api: false
+  allow_gemini_cli: true
+  allow_codex_cli: true
+  allow_ollama: false
+  allow_azure_tts: true
+  allow_openai_tts: false
+  allow_whisper_api: false
+  allow_external_web: false
