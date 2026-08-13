@@ -3,11 +3,13 @@ import { useCurrentFrame, useVideoConfig, AbsoluteFill } from "remotion";
 import { bg, accent, text, font_title } from "../theme/tokens";
 import { fadeIn, slideUp, pulse } from "../motion/primitives";
 import type { OutroCtaProps } from "../types/scenes";
+import { CaptionOverlay } from "../components/CaptionOverlay";
 
 export const OutroCta: React.FC<OutroCtaProps> = ({
   nextVideos = [],
   channelName = "",
   durationInFrames,
+  captionSegments,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -27,9 +29,11 @@ export const OutroCta: React.FC<OutroCtaProps> = ({
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        padding: "0 80px",
+        padding: "0 80px 156px",
         fontFamily: font_title,
         gap: 56,
+        position: "relative",
+        boxSizing: "border-box",
       }}
     >
       {/* Header */}
@@ -141,6 +145,8 @@ export const OutroCta: React.FC<OutroCtaProps> = ({
           </p>
         </div>
       )}
+
+      <CaptionOverlay captionSegments={captionSegments} />
     </AbsoluteFill>
   );
 };

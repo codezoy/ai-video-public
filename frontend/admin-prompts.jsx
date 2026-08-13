@@ -229,6 +229,7 @@ function PromptsScreen() {
   const [flashVar, setFlashVar] = pUS(null);
   const [saved, setSaved] = pUS(false);
   const [copied, setCopied] = pUS(false);
+  const [copyError, setCopyError] = pUS('');
   const [mobileDetail, setMobileDetail] = pUS(false);
 
   const persist = (next) => { setPrompts(next); savePrompts(next); };
@@ -240,16 +241,23 @@ function PromptsScreen() {
 
   const select = (p) => {
     setSelId(p.id); setViewing(p.currentVersion); setBody(currentBody(p));
-    setMode('edit'); setSaved(false); setMobileDetail(true);
+    setMode('edit'); setSaved(false); setCopied(false); setCopyError(''); setMobileDetail(true);
   };
 
   const pickVersion = (v) => {
     setViewing(v); setMode('edit');
     const vo = sel.versions.find((x) => x.v === v);
     setBody(vo ? vo.body : '');
+    setCopied(false); setCopyError('');
   };
 
   const flash = (name) => { setFlashVar(name); setTimeout(() => setFlashVar(null), 1200); };
+
+  const updateBody = (nextBody) => {
+    setBody(nextBody);
+    setCopied(false);
+    setCopyError('');
+  };
 
   const save = () => {
     const next = prompts.map((p) => {
@@ -279,9 +287,16 @@ function PromptsScreen() {
     setMode('edit');
   };
 
-  const copy = () => {
-    navigator.clipboard && navigator.clipboard.writeText(body);
-    setCopied(true); setTimeout(() => setCopied(false), 1600);
+  const copy = async (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    setCopyError('');
+    const result = await copyTextToClipboard(body, { label: 'Prompt body' });
+    if (result.ok) {
+      setCopied(true); setTimeout(() => setCopied(false), 1600);
+    } else {
+      setCopyError(result.error); setTimeout(() => setCopyError(''), 2200);
+    }
   };
 
   const startNew = () => { setMode('new'); setSelId(null); setMobileDetail(true); };
@@ -389,9 +404,10 @@ function PromptsScreen() {
                 <div className="det-acts">
                   {saved && <span className="saved-flag"><Icon name="check" size={15} /> 저장됨</span>}
                   {copied && <span className="saved-flag"><Icon name="check" size={15} /> 복사됨</span>}
+                  {copyError && <span className="saved-flag" role="status" style={{color:'var(--bad)'}}><Icon name="alert" size={15} /> 복사 실패</span>}
                   <VersionDropdown prompt={sel} viewing={viewing} onPick={pickVersion}
                     onBranch={branch} onCompare={() => setMode('diff')} />
-                  <button className="btn sm" onClick={copy}><Icon name="copy" size={14} /> 복사</button>
+                  <button className="btn sm" onClick={copy} disabled={!normalizeCopyText(body)} aria-label="프롬프트 본문 복사"><Icon name="copy" size={14} /> 복사</button>
                   <button className="btn primary sm" disabled={!dirty} onClick={save}>저장</button>
                 </div>
               </div>
@@ -418,7 +434,7 @@ function PromptsScreen() {
                       </span>
                     </div>
                   )}
-                  <CodeEditor value={body} onChange={setBody} readOnly={!onCurrent} flashVar={flashVar} />
+                  <CodeEditor value={body} onChange={updateBody} readOnly={!onCurrent} flashVar={flashVar} />
                   <VariablePanel body={body} onVarClick={flash} />
                 </div>
               )}

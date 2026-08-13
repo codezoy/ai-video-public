@@ -73,6 +73,16 @@ def _download_name(value: str, fallback: str) -> str:
     return re.sub(r'[/\\:*?"<>|]', "_", value.strip()).strip("_") or fallback
 
 
+def _api_time(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=datetime.timezone.utc)
+        return value.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
 def _available_artifacts(row: Any) -> list[RunAvailableArtifactResponse]:
     run_id = row["run_id"]
     run_dir = _run_dir(run_id)
@@ -181,8 +191,8 @@ def _row_to_run(
         RunStageResponse(
             stage_key=s["stage_key"],
             status=s["status"],
-            started_at=s["started_at"],
-            completed_at=s["completed_at"],
+            started_at=_api_time(s["started_at"]),
+            completed_at=_api_time(s["completed_at"]),
             duration_sec=s["duration_sec"],
             error_msg=s["error_msg"] or None,
         )
@@ -192,9 +202,18 @@ def _row_to_run(
     duration_sec: float | None = None
     if row["started_at"] and row["completed_at"]:
         try:
-            fmt = "%Y-%m-%dT%H:%M:%S.%f"
-            started = datetime.datetime.fromisoformat(row["started_at"].rstrip("Z"))
-            completed = datetime.datetime.fromisoformat(row["completed_at"].rstrip("Z"))
+            started_value = row["started_at"]
+            completed_value = row["completed_at"]
+            started = (
+                started_value
+                if isinstance(started_value, datetime.datetime)
+                else datetime.datetime.fromisoformat(str(started_value).rstrip("Z"))
+            )
+            completed = (
+                completed_value
+                if isinstance(completed_value, datetime.datetime)
+                else datetime.datetime.fromisoformat(str(completed_value).rstrip("Z"))
+            )
             duration_sec = (completed - started).total_seconds()
         except Exception:
             pass
@@ -238,8 +257,8 @@ def _row_to_run(
         profile_name=row["profile_name"] or None,
         language=language or "ko",
         status=row["status"],
-        started_at=row["started_at"],
-        completed_at=row["completed_at"] or None,
+        started_at=_api_time(row["started_at"]),
+        completed_at=_api_time(row["completed_at"]),
         selected_input_path=row["selected_input_path"] or None,
         work_dir=row["work_dir"] or None,
         final_mp4_path=row["final_mp4_path"] or None,
@@ -469,7 +488,8 @@ def create_run(
         )
         queue_position = _db_ops.get_queue_position(run_id)
     except Exception as exc:
-        logger.warning("[runs] DB pre-create failed (continuing): %s", exc)
+        logger.error("[runs] DB pre-create failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Database is unavailable") from exc
 
     return {"status": "queued", "run_id": run_id, "topic": request.topic, "language": request.language, "queue_position": queue_position}
 
@@ -670,7 +690,7 @@ def get_run_artifacts(run_id: str) -> RunArtifactListResponse:
                 file_path=r["file_path"],
                 sha256=r["sha256"] or None,
                 size_bytes=r["size_bytes"] or None,
-                created_at=r["created_at"] or None,
+                created_at=_api_time(r["created_at"]),
             )
             for r in rows
         ]
@@ -777,7 +797,7 @@ def get_run_logs(run_id: str, limit: int = 50) -> RunLogsResponse:
 
     entries = [
         RunLogEntry(
-            timestamp=r["completed_at"] or r["started_at"],
+            timestamp=_api_time(r["completed_at"] or r["started_at"]),
             stage_key=r["stage_key"],
             status=r["status"],
             detail=r["error_msg"] or None,

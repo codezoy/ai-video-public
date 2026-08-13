@@ -15,15 +15,15 @@ _CONTENT_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"버전|역사|history|연도|타임라인|timeline|변화|발전", re.IGNORECASE), "timeline"),
     (re.compile(r"표|테이블|table|비교표|항목", re.IGNORECASE), "table_compare"),
     (re.compile(r"정리|요약|핵심|결론|takeaway|summary", re.IGNORECASE), "summary_card"),
-    (re.compile(r"개념|용어|키워드|정의|란\?|이란|란\s", re.IGNORECASE), "keyword_cards"),
+    (re.compile(r"개념|용어|키워드|정의|란\?|이란|란\s", re.IGNORECASE), "pill_tags"),
 ]
 
 _VISUAL_TYPE_MAP: dict[str, str] = {
     "mermaid":  "architecture_tree",
     "code":     "flow_steps",
-    "card":     "keyword_cards",
+    "card":     "pill_tags",
     "bullets":  "flow_steps",
-    "list":     "keyword_cards",
+    "list":     "pill_tags",
     "diagram":  "architecture_tree",
     "quote":    "summary_card",
     # "text" intentionally excluded — falls through to keyword-based classification
@@ -43,7 +43,7 @@ def _classify_by_content(scene: dict[str, Any]) -> str:
 
     bullets = scene.get("bullets") or []
     if len(bullets) >= 3:
-        return "keyword_cards"
+        return "pill_tags"
 
     return "flow_steps"
 

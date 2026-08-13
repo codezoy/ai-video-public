@@ -1,16 +1,11 @@
-"""Non-blocking PostgreSQL P0 operations for pipeline DB recording.
-
-All public functions silently catch exceptions so that DB failures
-never interrupt video generation.
-"""
+"""PostgreSQL runtime operations for pipeline DB recording."""
 from __future__ import annotations
 
 import datetime
 import hashlib
+import json
 import logging
 from pathlib import Path
-
-from psycopg2.extras import Json
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +29,6 @@ def init(db_path: Path | None = None) -> None:
         return
     try:
         from db.connection import init_db
-        if db_path is not None:
-            raise RuntimeError("db_path is not supported; configure PostgreSQL with AIVIDEO_DATABASE_URL or DATABASE_URL")
         init_db()
         _initialized = True
     except Exception as exc:
@@ -75,7 +68,7 @@ def create_run(
                 """,
                 (
                     run_id, topic, profile_name, language, now, now,
-                    input_path, Json([input_path]), work_dir,
+                    input_path, json.dumps([input_path]), work_dir,
                     contents, target_duration_sec, mode, prompt_filename, run_type,
                     tts_provider, tts_voice,
                 ),
@@ -84,7 +77,8 @@ def create_run(
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] create_run 실패 (무시): %s", exc)
+        logger.warning("[DB] create_run 실패: %s", exc)
+        raise
 
 
 def update_tts_metadata(
@@ -102,13 +96,14 @@ def update_tts_metadata(
                 SET tts_voice=%s, tts_audio_duration_sec=%s, tts_cache_used=%s
                 WHERE run_id=%s
                 """,
-                (tts_voice, tts_audio_duration_sec, tts_cache_used, run_id),
+                (tts_voice, tts_audio_duration_sec, bool(tts_cache_used), run_id),
             )
             conn.commit()
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] update_tts_metadata 실패 (무시): %s", exc)
+        logger.warning("[DB] update_tts_metadata 실패: %s", exc)
+        raise
 
 
 def record_stage(
@@ -139,7 +134,8 @@ def record_stage(
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] record_stage 실패 (무시): %s", exc)
+        logger.warning("[DB] record_stage 실패: %s", exc)
+        raise
 
 
 def record_artifact(run_id: str, artifact_type: str, file_path: str) -> None:
@@ -164,7 +160,8 @@ def record_artifact(run_id: str, artifact_type: str, file_path: str) -> None:
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] record_artifact 실패 (무시): %s", exc)
+        logger.warning("[DB] record_artifact 실패: %s", exc)
+        raise
 
 
 def cancel_run(run_id: str) -> bool:
@@ -181,8 +178,8 @@ def cancel_run(run_id: str) -> bool:
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] cancel_run 실패 (무시): %s", exc)
-        return False
+        logger.warning("[DB] cancel_run 실패: %s", exc)
+        raise
 
 
 def delete_run(run_id: str) -> bool:
@@ -201,31 +198,36 @@ def delete_run(run_id: str) -> bool:
             conn.execute("DELETE FROM run_stages WHERE run_id = %s", (run_id,))
             conn.execute("DELETE FROM run_artifacts WHERE run_id = %s", (run_id,))
             conn.execute("DELETE FROM run_scene_plans WHERE run_id = %s", (run_id,))
+            conn.execute("DELETE FROM run_scripts WHERE run_id = %s", (run_id,))
+            conn.execute("DELETE FROM qa_results WHERE run_id = %s", (run_id,))
+            conn.execute("DELETE FROM llm_calls WHERE run_id = %s", (run_id,))
             conn.execute("DELETE FROM runs WHERE run_id = %s", (run_id,))
             conn.commit()
             return True
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] delete_run 실패 (무시): %s", exc)
-        return False
+        logger.warning("[DB] delete_run 실패: %s", exc)
+        raise
 
 
 def mark_stale_runs_failed(stale_hours: int = STALE_RUN_TIMEOUT_HOURS, exclude_run_ids: set[str] | None = None) -> int:
     """Mark orphaned RUNNING runs as FAILED. Skips run_ids in exclude_run_ids (active threads)."""
     error_msg = f"Marked failed by stale run cleanup ({stale_hours}h timeout)"
+    cutoff_expr = f"{int(stale_hours)} hours"
     try:
         conn = _conn()
         try:
             if exclude_run_ids:
                 placeholders = ",".join(["%s"] * len(exclude_run_ids))
-                params: tuple = (_utc_now(), error_msg, *exclude_run_ids, stale_hours)
+                params: tuple = (_utc_now(), error_msg, *exclude_run_ids, cutoff_expr)
                 cur = conn.execute(
                     f"""
                     UPDATE runs SET status='FAILED', completed_at=%s, error_message=%s
                     WHERE status='RUNNING'
                     AND run_id NOT IN ({placeholders})
-                    AND started_at < (now() - (%s * interval '1 hour'))
+                    AND started_at IS NOT NULL
+                    AND started_at < now() - (%s::interval)
                     """,
                     params,
                 )
@@ -234,9 +236,10 @@ def mark_stale_runs_failed(stale_hours: int = STALE_RUN_TIMEOUT_HOURS, exclude_r
                     """
                     UPDATE runs SET status='FAILED', completed_at=%s, error_message=%s
                     WHERE status='RUNNING'
-                    AND started_at < (now() - (%s * interval '1 hour'))
+                    AND started_at IS NOT NULL
+                    AND started_at < now() - (%s::interval)
                     """,
-                    (_utc_now(), error_msg, stale_hours),
+                    (_utc_now(), error_msg, cutoff_expr),
                 )
             conn.commit()
             count = cur.rowcount
@@ -246,8 +249,8 @@ def mark_stale_runs_failed(stale_hours: int = STALE_RUN_TIMEOUT_HOURS, exclude_r
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] mark_stale_runs_failed 실패 (무시): %s", exc)
-        return 0
+        logger.warning("[DB] mark_stale_runs_failed 실패: %s", exc)
+        raise
 
 
 def update_video_template(
@@ -266,7 +269,8 @@ def update_video_template(
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] update_video_template 실패 (무시): %s", exc)
+        logger.warning("[DB] update_video_template 실패: %s", exc)
+        raise
 
 
 def bulk_delete_test_runs() -> dict:
@@ -296,6 +300,9 @@ def bulk_delete_test_runs() -> dict:
                 conn.execute("DELETE FROM run_stages WHERE run_id = %s", (run_id,))
                 conn.execute("DELETE FROM run_artifacts WHERE run_id = %s", (run_id,))
                 conn.execute("DELETE FROM run_scene_plans WHERE run_id = %s", (run_id,))
+                conn.execute("DELETE FROM run_scripts WHERE run_id = %s", (run_id,))
+                conn.execute("DELETE FROM qa_results WHERE run_id = %s", (run_id,))
+                conn.execute("DELETE FROM llm_calls WHERE run_id = %s", (run_id,))
                 conn.execute("DELETE FROM runs WHERE run_id = %s", (run_id,))
                 run_dir = proj_root / "work" / "runs" / run_id
                 if run_dir.exists():
@@ -311,6 +318,7 @@ def bulk_delete_test_runs() -> dict:
             conn.close()
     except Exception as exc:
         logger.warning("[DB] bulk_delete_test_runs 실패: %s", exc)
+        raise
 
     return {
         "deleted_count": deleted_count,
@@ -342,8 +350,8 @@ def resume_run(run_id: str) -> dict | None:
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] resume_run 실패 (무시): %s", exc)
-        return None
+        logger.warning("[DB] resume_run 실패: %s", exc)
+        raise
 
 
 _MAX_CLAIM_RETRIES = 5
@@ -390,8 +398,8 @@ def claim_queued_run(max_concurrent: int) -> dict | None:
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] claim_queued_run 실패 (무시): %s", exc)
-        return None
+        logger.warning("[DB] claim_queued_run 실패: %s", exc)
+        raise
 
 
 def get_queue_status() -> dict:
@@ -417,8 +425,8 @@ def get_queue_status() -> dict:
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] get_queue_status 실패 (무시): %s", exc)
-        return {"queued_count": 0, "running_count": 0, "oldest_queued_at": None}
+        logger.warning("[DB] get_queue_status 실패: %s", exc)
+        raise
 
 
 def get_queue_position(run_id: str) -> int | None:
@@ -445,8 +453,8 @@ def get_queue_position(run_id: str) -> int | None:
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] get_queue_position 실패 (무시): %s", exc)
-        return None
+        logger.warning("[DB] get_queue_position 실패: %s", exc)
+        raise
 
 
 def _normalize_queue_orders(conn, ordered_run_ids: list[str]) -> None:
@@ -554,12 +562,12 @@ def get_avg_runtime_sec(limit: int = 10) -> float | None:
             ).fetchall()
             if not rows:
                 return None
-            return float(sum(r["dur"] for r in rows) / len(rows))
+            return sum(r["dur"] for r in rows) / len(rows)
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] get_avg_runtime_sec 실패 (무시): %s", exc)
-        return None
+        logger.warning("[DB] get_avg_runtime_sec 실패: %s", exc)
+        raise
 
 
 def bulk_cancel_queued(run_ids: list[str] | None = None) -> dict:
@@ -592,7 +600,7 @@ def bulk_cancel_queued(run_ids: list[str] | None = None) -> dict:
             conn.close()
     except Exception as exc:
         logger.warning("[DB] bulk_cancel_queued 실패: %s", exc)
-        return {"ok": False, "error": str(exc), "status_code": 500}
+        raise
 
 
 def complete_run(
@@ -610,10 +618,11 @@ def complete_run(
                 SET status=%s, completed_at=%s, final_mp4_path=%s, generated_files=%s
                 WHERE run_id=%s
                 """,
-                (status, _utc_now(), final_mp4_path, Json(generated_files or []), run_id),
+                (status, _utc_now(), final_mp4_path, json.dumps(generated_files or []), run_id),
             )
             conn.commit()
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("[DB] complete_run 실패 (무시): %s", exc)
+        logger.warning("[DB] complete_run 실패: %s", exc)
+        raise

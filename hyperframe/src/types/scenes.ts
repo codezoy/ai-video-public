@@ -84,6 +84,7 @@ export interface OutroCtaProps {
   nextVideos?: string[];
   channelName?: string;
   durationInFrames: number;
+  captionSegments?: CaptionSegment[] | null;
 }
 
 export interface FlowStepsProps {

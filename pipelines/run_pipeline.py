@@ -1,7 +1,8 @@
 """파이프라인 통합 러너 — S2(대본) → S8(QA) 전 단계.
 
 stage 순서: script → polish → critique → regen → scenes
-           → tts → whisper_align → caption_segment → caption_validate → motion_anchor
+           → tts → whisper_align → caption_segment → caption_timing_align
+           → caption_validate → motion_anchor
            → render → visual_correct → compose → qa → final
 Audio Driven Scene 원칙: render 이전에 audio_duration, caption, motion_anchor 가 확보되어야 한다.
 각 stage 완료 시 iter_dir/stage_{stage}.done 플래그를 기록하며, 재실행 시 해당 stage 를 스킵한다.
@@ -61,7 +62,7 @@ _tls = threading.local()  # thread-local: _tls.run_id set per-run to avoid concu
 
 STOP_STAGES = [
     "script", "polish", "critique", "regen",
-    "scenes", "scene_review", "scene_quality", "content_repair", "tts", "whisper_align", "caption_segment", "caption_validate", "motion_anchor",
+    "scenes", "scene_review", "scene_quality", "content_repair", "tts", "whisper_align", "caption_segment", "caption_timing_align", "caption_validate", "motion_anchor",
     "render", "visual_correct", "scene_render", "caption_overlay", "final_concat", "compose", "qa", "final",
 ]
 
@@ -549,14 +550,10 @@ def _run_tts_synth(
     audio_dir.mkdir(parents=True, exist_ok=True)
     narration_dir.mkdir(parents=True, exist_ok=True)
 
-    # config/video_defaults.yaml에서 TTS speed 로드
-    _tts_rate = 1.0
-    _defaults_path = Path(__file__).parent.parent / "config" / "video_defaults.yaml"
-    if _defaults_path.exists():
-        import yaml as _yaml
-        _conf = _yaml.safe_load(_defaults_path.read_text(encoding="utf-8")) or {}
-        _tts_rate = float(_conf.get("tts", {}).get("speed", 1.0))
-        _log(f"TTS rate: {_tts_rate} (config/video_defaults.yaml)")
+    from video_defaults import get_tts_speed  # type: ignore[import]
+
+    _tts_rate = get_tts_speed()
+    _log(f"TTS rate: {_tts_rate} (config/video_defaults.yaml)")
 
     data = json.loads(scenes_json.read_text(encoding="utf-8"))
     scenes = data.get("scenes", [])
@@ -861,6 +858,65 @@ def _run_caption_from_narration(
     _mark_done(iter_dir, stage_key)
 
 
+# ── 인라인 caption_timing_align 단계 ──────────────────────────────────────────
+
+def _run_caption_timing_align(
+    scenes_json: Path,
+    audio_dir: Path,
+    iter_dir: Path,
+    dry_run: bool,
+    force: bool,
+) -> None:
+    """S5.2a caption_timing_align — Whisper timing signal로 start/end만 보정한다."""
+    stage_key = "caption_timing_align"
+    _rule("[S5.2a caption_timing_align] 시작")
+
+    if not force and _is_done(iter_dir, stage_key):
+        _log(f"stage_{stage_key}.done 존재 → 스킵", "warning")
+        _db_record_stage(stage_key, "SKIP", 0.0)
+        return
+
+    if not scenes_json.exists():
+        _log(f"scenes.json 없음: {scenes_json}", "error")
+        _db_record_stage(stage_key, "FAIL", 0.0, "scenes.json 없음")
+        sys.exit(1)
+
+    report_path = iter_dir / "caption_timing_alignment.json"
+    if dry_run:
+        _log(f"dry-run: caption_timing_align on {scenes_json}")
+        _mark_done(iter_dir, stage_key)
+        return
+
+    pipelines_dir = str(Path(__file__).parent)
+    if pipelines_dir not in sys.path:
+        sys.path.insert(0, pipelines_dir)
+
+    from caption_timing_align import run_on_scenes  # type: ignore[import]
+
+    t0 = time.monotonic()
+    result = run_on_scenes(scenes_json=scenes_json, audio_dir=audio_dir, report_path=report_path)
+    elapsed = time.monotonic() - t0
+
+    synced = result.get("synced", 0)
+    fallback = result.get("fallback", 0)
+    skipped = result.get("skipped", 0)
+    total = result.get("total", 0)
+    if synced:
+        _log(
+            f"caption_timing_align DONE — synced={synced}/{total}, fallback={fallback}, skipped={skipped}, report={report_path}",
+            "success",
+        )
+        _db_record_stage(stage_key, "DONE", elapsed)
+    else:
+        _log(
+            f"caption_timing_align FALLBACK/SKIP — synced=0/{total}, fallback={fallback}, skipped={skipped}, report={report_path}",
+            "warning",
+        )
+        _db_record_stage(stage_key, "WARN", elapsed, f"synced=0 fallback={fallback} skipped={skipped}")
+
+    _mark_done(iter_dir, stage_key)
+
+
 # ── 인라인 caption_validate 단계 ──────────────────────────────────────────────
 
 def _run_caption_validate(
@@ -1050,11 +1106,20 @@ def _run_scene_render(
     """S6.5 scene_render — Scene Object → sceneNN.mp4 per-scene."""
     _rule("[S6.5 scene_render] 시작")
 
+    data = json.loads(scenes_json.read_text(encoding="utf-8"))
+    scenes = data.get("scenes", [])
+
+    pipelines_dir = str(Path(__file__).parent)
+    if pipelines_dir not in sys.path:
+        sys.path.insert(0, pipelines_dir)
+
+    from render_template import validate_scene_templates  # type: ignore[import]
+
+    validate_scene_templates(scenes)
+
     if not force and _is_done(iter_dir, "scene_render"):
         _log("stage_scene_render.done 존재 → 스킵", "warning")
         _db_record_stage("scene_render", "SKIP", 0.0)
-        data = json.loads(scenes_json.read_text(encoding="utf-8"))
-        scenes = data.get("scenes", [])
         result = []
         for s in scenes:
             sid = s.get("id", 0)
@@ -1070,15 +1135,9 @@ def _run_scene_render(
         _mark_done(iter_dir, "scene_render")
         return []
 
-    pipelines_dir = str(Path(__file__).parent)
-    if pipelines_dir not in sys.path:
-        sys.path.insert(0, pipelines_dir)
-
     from scene_render import render_scenes  # type: ignore[import]
 
     scenes_dir.mkdir(parents=True, exist_ok=True)
-    data = json.loads(scenes_json.read_text(encoding="utf-8"))
-    scenes = data.get("scenes", [])
 
     for scene in scenes:
         if not scene.get("slide_path"):
@@ -2410,6 +2469,18 @@ def run(
         return
     if stop_after == "caption_segment":
         _log("stop_after=caption_segment 도달, 종료")
+        return
+
+    # ── S5.2a: Caption timing alignment — text/order 보존, timing만 선택 보정 ────
+    _run_caption_timing_align(
+        scenes_json=scenes_json,
+        audio_dir=audio_dir,
+        iter_dir=iter_dir,
+        dry_run=dry_run,
+        force=force,
+    )
+    if stop_after == "caption_timing_align":
+        _log("stop_after=caption_timing_align 도달, 종료")
         return
 
     # ── S5.3: Caption validation 루프 ─────────────────────────────────────────

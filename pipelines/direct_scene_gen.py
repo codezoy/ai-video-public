@@ -71,7 +71,7 @@ _VISUAL_DATA_EXAMPLES_STR: str = _build_visual_data_examples()
 _VISUAL_TYPE_TO_TEMPLATE_HINT: dict[str, str] = {
     "single_text": "hero_title(첫 씬) 또는 flow_steps",
     "compare_two": "compare_two",
-    "bullet_list": "keyword_cards 또는 flow_steps",
+    "bullet_list": "pill_tags 또는 flow_steps",
     "metric_highlight": "flow_steps",
 }
 
@@ -252,7 +252,7 @@ def _build_system_prompt(
         f"  새로운 template_type을 창작하지 마라.\n\n"
         f"[template_type 선택 가이드]\n"
         f"- 첫 번째 씬(index 0)만: hero_title (⚠ 중간/마지막 씬에서 사용 절대 금지)\n"
-        f"- 제목 변형 씬: split_title | underline_title | side_accent_title\n"
+        f"- 제목 변형 씬: split_title | fullscreen_text\n"
         f"- 마지막 씬: summary_card\n"
         f"- 비교/차이 설명: compare_two | two_column_text\n"
         f"- 전후 변화/변환: before_after\n"
@@ -261,23 +261,22 @@ def _build_system_prompt(
         f"- 버전/역사/타임라인: timeline\n"
         f"- 표 형태 비교: table_compare\n"
         f"- 인용/명언 강조: quote_highlight\n"
-        f"- 용어/키워드 나열: keyword_cards | glass_cards | border_cards | pill_tags\n"
+        f"- 용어/키워드 나열: border_cards | pill_tags\n"
         f"- 단일 임팩트 메시지: fullscreen_text\n"
         f"- 강조/팁/경고 박스: callout_box | bracket_emphasis\n"
         f"- 크기 대비 카드: scale_pop_cards\n"
         f"- 코드 표시 (코드/개발 주제): code_editor | terminal\n"
-        f"- 대화/채팅 형식: chat_conversation\n"
-        f"- 아키텍처 다이어그램: architecture_diagram | agent_workflow\n\n"
+        f"- 대화/채팅 형식: chat_conversation\n\n"
         f"[씬 구성 다양성 규칙 — 반드시 준수]\n"
         f"- 전체 씬 중 반드시 1개는 비교형 (compare_two/before_after/two_column_text), 1개는 timeline을 사용한다\n"
-        f"- keyword_cards/glass_cards/border_cards/pill_tags는 핵심어 3~5개 표시 시만 사용한다 (설명문 금지)\n"
+        f"- border_cards/pill_tags는 핵심어 3~5개 표시 시만 사용한다 (설명문 금지)\n"
         f"- Explain-class 템플릿(flow_steps/number_badge_list/slide_in_list)은 전체에서 최대 2개만 허용한다\n"
-        f"- 씬이 {min_scenes}개 이상이면 architecture_tree, table_compare, architecture_diagram 중 1개 이상 반드시 포함한다\n"
+        f"- 씬이 {min_scenes}개 이상이면 architecture_tree, table_compare, code_editor 중 1개 이상 반드시 포함한다\n"
         f"- 모든 씬은 서로 다른 template_type을 사용한다 (동일 template_type 중복 금지)\n"
         f"- visual_type은 template_type에 맞게 설정:\n"
         f"  * timeline → \"timeline\"\n"
         f"  * compare_two/before_after/two_column_text → \"compare\"\n"
-        f"  * hero_title/split_title/underline_title/side_accent_title → \"hero\"\n"
+        f"  * hero_title/split_title/fullscreen_text → \"hero\"\n"
         f"  * 그 외 → \"text\"\n\n"
         f"[visual_data 예시]\n"
         f"{_VISUAL_DATA_EXAMPLES_STR}"

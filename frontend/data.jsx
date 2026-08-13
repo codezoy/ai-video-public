@@ -187,7 +187,9 @@ function normalizeTemplate(apiTemplate, index = 0) {
     desc: `${name} is loaded from /templates.`,
     purpose: `${name} prompt loaded from /templates.`,
     applies: [],
-    body: apiTemplate.content || `${name}\n${filename}\n${apiTemplate.size_bytes || 0} bytes`,
+    body: Object.prototype.hasOwnProperty.call(apiTemplate, 'content')
+      ? apiTemplate.content
+      : `${name}\n${filename}\n${apiTemplate.size_bytes || 0} bytes`,
     output: ['API template file', filename],
     scenarios: ['API'],
     size_bytes: apiTemplate.size_bytes || 0,
@@ -338,7 +340,6 @@ const _VIDEO_TEMPLATE_META = {
   Timeline:     { ko: '타임라인',    anim: 'timeline',   short: '시간 순서 이벤트 표시',      duration: '10s', desc: '시간 순서에 따른 이벤트 Composition', output: ['이벤트 목록', '타임라인'], scenarios: ['역사', '순서'] },
   CompareTwo:   { ko: '비교',       anim: 'news',       short: '두 항목 나란히 비교',        duration: '8s',  desc: '두 가지를 나란히 비교하는 Composition', output: ['항목 A', '항목 B'], scenarios: ['비교', '대조'] },
   TableCompare: { ko: '표 비교',     anim: 'news',       short: '다중 항목 표 형태 비교',     duration: '10s', desc: '여러 항목을 표로 비교하는 Composition', output: ['표 헤더', '행 데이터'], scenarios: ['비교 표', '데이터'] },
-  KeywordCards: { ko: '키워드 카드', anim: 'doc',        short: '핵심 키워드 카드 나열',      duration: '8s',  desc: '키워드를 카드 형태로 표시하는 Composition', output: ['키워드 목록', '카드 그리드'], scenarios: ['키워드', '용어'] },
   SummaryCard:  { ko: '요약 카드',   anim: 'doc',        short: '핵심 내용 요약 카드',        duration: '8s',  desc: '내용을 요약 카드로 표시하는 Composition', output: ['요약 포인트', '핵심 내용'], scenarios: ['요약', '정리'] },
 };
 

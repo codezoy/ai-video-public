@@ -9,15 +9,21 @@ generation:
 ai_motion:
   enabled: false
 
-  providers:
-    primary: codex_cli
-    secondary: gemini_cli
+  # NOTE: provider/model 라우팅은 여기서 관리하지 않는다. AI Motion Spec
+  # 생성(motion_spec role)의 provider 우선순위는 config/llm_router.yaml →
+  # roles.motion_spec.provider_order 를 참고할 것 (단일 진실 공급원).
 
   audit:
     enabled: true
 
 tts:
-  speed: 1.2          # 속도 배율 (1.0 = 보통, 1.2 = 20% 빠름)
+  speed: 1.0          # 속도 배율 (1.0 = 보통)
+
+caption_timing:
+  whisper_lead_ms: 250
+
+scene_render:
+  tail_padding_sec: 1.2
 
 cost_guard:
   allow_openai_api: false
@@ -28,5 +34,6 @@ cost_guard:
   allow_ollama: false
   allow_azure_tts: true
   allow_openai_tts: false
-  allow_whisper_api: false
+  allow_whisper_api: false       # 외부/유료 Whisper API (현재 미사용, 보수적으로 차단 유지)
+  allow_local_whisper: true      # 로컬 .venv openai-whisper 실행 (비용 API 아님, 기본 허용)
   allow_external_web: false

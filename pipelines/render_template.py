@@ -9,6 +9,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+try:
+    from template_retirement_compat import is_retired_template_type, retired_template_error
+except ImportError:  # pragma: no cover - package import fallback
+    from pipelines.template_retirement_compat import is_retired_template_type, retired_template_error  # type: ignore[no-redef]
+
 log = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).parent.parent
@@ -25,15 +30,11 @@ _COMPOSITION_ID: dict[str, str] = {
     "timeline":          "Timeline",
     "compare_two":       "CompareTwo",
     "table_compare":     "TableCompare",
-    "keyword_cards":     "KeywordCards",
     "summary_card":      "SummaryCard",
     "quote_highlight":   "Quote",
     "before_after":      "CompareTwo",
     # LOW-difficulty templates (Phase 1 expansion)
     "split_title":        "SplitTitle",
-    "underline_title":    "UnderlineTitle",
-    "side_accent_title":  "SideAccentTitle",
-    "glass_cards":        "GlassCards",
     "border_cards":       "BorderCards",
     "number_badge_list":  "NumberBadgeList",
     "pill_tags":          "PillTags",
@@ -47,11 +48,7 @@ _COMPOSITION_ID: dict[str, str] = {
     "code_editor":           "CodeEditorComposition",
     "terminal":              "TerminalComposition",
     "chat_conversation":     "ChatConversationComposition",
-    "architecture_diagram":  "ArchitectureDiagramComposition",
-    "agent_workflow":        "AgentWorkflowComposition",
     # Variant templates (Phase 3 — visual diversity)
-    "keyword_cards_grid":  "KeywordCards",
-    "keyword_cards_stack": "KeywordCards",
     "timeline_zigzag":     "Timeline",
     "timeline_cards":      "Timeline",
     "flow_steps_circle":   "FlowSteps",
@@ -65,6 +62,37 @@ _COMPOSITION_ID: dict[str, str] = {
     "QUOTE":       "Quote",
     "OUTRO_CTA":   "OutroCta",
 }
+
+
+def supported_template_types() -> set[str]:
+    """Return template identifiers that can be rendered by Remotion."""
+    return set(_COMPOSITION_ID) | set(_COMPOSITION_ID.values())
+
+
+def validate_template_type(template_type: str | None, *, scene_id: Any = None) -> None:
+    """Fail before invoking Node/Remotion for retired or unsupported templates."""
+    raw_type = str(template_type or "flow_steps")
+    if is_retired_template_type(raw_type):
+        reason = retired_template_error(raw_type)
+        raise ValueError(
+            f"Retired template type rejected for scene {scene_id}: {reason}"
+        )
+    if raw_type not in supported_template_types() and raw_type.upper() not in _COMPOSITION_ID:
+        raise ValueError(
+            f"Unsupported template type for scene {scene_id}: {raw_type}"
+        )
+
+
+def validate_scene_templates(scenes: list[dict[str, Any]]) -> None:
+    """Validate every scene template before starting a render batch."""
+    errors: list[str] = []
+    for scene in scenes:
+        try:
+            validate_template_type(scene.get("template_type"), scene_id=scene.get("id"))
+        except ValueError as exc:
+            errors.append(str(exc))
+    if errors:
+        raise RuntimeError("Scene template validation failed:\n" + "\n".join(errors))
 
 
 def _check_node_env() -> None:
@@ -93,13 +121,14 @@ def render_scene(
 
     Returns the output path on success.
     """
+    raw_type = scene.get("template_type") or "flow_steps"
+    validate_template_type(raw_type, scene_id=scene.get("id"))
+
     if output_path.exists() and not force:
         log.debug("Skip render (exists): %s", output_path)
         return output_path
 
     _check_node_env()
-
-    raw_type = scene.get("template_type") or "flow_steps"
     # Try lowercase first (new style), then UPPER_SNAKE for legacy
     composition_id = _COMPOSITION_ID.get(raw_type) or _COMPOSITION_ID.get(raw_type.upper(), raw_type)
     props = _build_props(scene, fps)
@@ -290,6 +319,8 @@ def _extract_visual_items(scene: dict[str, Any]) -> list[str]:
 def _build_props(scene: dict[str, Any], fps: int) -> dict[str, Any]:
     """Map scene dict to Remotion component props."""
     template_type = scene.get("template_type") or "flow_steps"
+    if is_retired_template_type(template_type):
+        raise ValueError(retired_template_error(template_type))
     narration = scene.get("narration", "")
     title = scene.get("title", "")
     visual_data = scene.get("visual_data") or {}
@@ -330,17 +361,6 @@ def _build_props(scene: dict[str, Any], fps: int) -> dict[str, Any]:
             "nextVideos": [str(x) for x in takeaways[:2]],
             "channelName": os.environ.get("CHANNEL_NAME", ""),
             "durationInFrames": duration_frames,
-        }
-    # keyword_cards — dedicated KeywordCards composition
-    elif template_type == "keyword_cards":
-        raw_icons = visual_data.get("icons")
-        raw_descs = visual_data.get("descriptions")
-        return {
-            "title": visual_data.get("title") or title or None,
-            "keywords": [str(k) for k in (visual_data.get("keywords") or items)],
-            "icons": [str(x) for x in raw_icons] if raw_icons else None,
-            "descriptions": [str(x) for x in raw_descs] if raw_descs else None,
-            "durationInFrames": duration_frames,
             "captionSegments": caption_segments,
         }
     # legacy LIST_REVEAL
@@ -368,11 +388,12 @@ def _build_props(scene: dict[str, Any], fps: int) -> dict[str, Any]:
         raw_nodes = visual_data.get("nodes") or []
         # nodes may be list[str] or list[{label, level}]
         nodes: list[Any] = []
-        for n in raw_nodes:
+        for i, n in enumerate(raw_nodes):
             if isinstance(n, dict):
-                nodes.append({"label": str(n.get("label", n)), "level": int(n.get("level", 0))})
+                default_level = 0 if i == 0 else 1
+                nodes.append({"label": str(n.get("label", n)), "level": int(n.get("level", default_level))})
             else:
-                nodes.append({"label": str(n), "level": 0})
+                nodes.append({"label": str(n), "level": 0 if i == 0 else 1})
         if not nodes:
             nodes = [{"label": s, "level": i} for i, s in enumerate(items[:4])]
         return {
@@ -448,34 +469,6 @@ def _build_props(scene: dict[str, Any], fps: int) -> dict[str, Any]:
             "title": visual_data.get("title") or title,
             "subtitle": visual_data.get("subtitle") or None,
             "detail": visual_data.get("detail") or None,
-            "durationInFrames": duration_frames,
-            "captionSegments": caption_segments,
-        }
-    # underline_title — UnderlineTitle composition
-    elif template_type == "underline_title":
-        return {
-            "title": visual_data.get("title") or title,
-            "subtitle": visual_data.get("subtitle") or None,
-            "label": visual_data.get("label") or None,
-            "durationInFrames": duration_frames,
-            "captionSegments": caption_segments,
-        }
-    # side_accent_title — SideAccentTitle composition
-    elif template_type == "side_accent_title":
-        return {
-            "title": visual_data.get("title") or title,
-            "subtitle": visual_data.get("subtitle") or None,
-            "tag": visual_data.get("tag") or None,
-            "durationInFrames": duration_frames,
-            "captionSegments": caption_segments,
-        }
-    # glass_cards — GlassCards composition
-    elif template_type == "glass_cards":
-        raw_icons = visual_data.get("icons")
-        return {
-            "title": visual_data.get("title") or title or None,
-            "items": [str(x) for x in (visual_data.get("items") or items)],
-            "icons": [str(x) for x in raw_icons] if raw_icons else None,
             "durationInFrames": duration_frames,
             "captionSegments": caption_segments,
         }
@@ -607,82 +600,6 @@ def _build_props(scene: dict[str, Any], fps: int) -> dict[str, Any]:
         return {
             "title": visual_data.get("title") or title or None,
             "messages": messages,
-            "durationInFrames": duration_frames,
-            "captionSegments": caption_segments,
-        }
-    # architecture_diagram — ArchitectureDiagramComposition
-    elif template_type == "architecture_diagram":
-        raw_nodes = visual_data.get("nodes") or []
-        nodes = [
-            {
-                "id": str(n.get("id", "")),
-                "label": str(n.get("label", "")),
-                "type": n.get("type", "secondary"),
-                "x": float(n.get("x", 50)),
-                "y": float(n.get("y", 50)),
-            }
-            for n in raw_nodes
-            if isinstance(n, dict)
-        ]
-        raw_edges = visual_data.get("edges") or []
-        edges = [
-            {
-                "from": str(e.get("from", "")),
-                "to": str(e.get("to", "")),
-                **({"label": e["label"]} if e.get("label") else {}),
-                **({"animated": e["animated"]} if e.get("animated") is not None else {}),
-            }
-            for e in raw_edges
-            if isinstance(e, dict)
-        ]
-        return {
-            "title": visual_data.get("title") or title or None,
-            "nodes": nodes,
-            "edges": edges,
-            "durationInFrames": duration_frames,
-            "captionSegments": caption_segments,
-        }
-    # agent_workflow — AgentWorkflowComposition
-    elif template_type == "agent_workflow":
-        raw_steps = visual_data.get("steps") or []
-        steps = [
-            {
-                "label": str(s.get("label", "")),
-                **({"description": s["description"]} if s.get("description") else {}),
-                **({"status": s["status"]} if s.get("status") else {}),
-                **({"icon": s["icon"]} if s.get("icon") else {}),
-            }
-            for s in raw_steps
-            if isinstance(s, dict)
-        ]
-        return {
-            "title": visual_data.get("title") or title or None,
-            "agent_name": visual_data.get("agent_name") or None,
-            "steps": steps,
-            "current_step": visual_data.get("current_step") or None,
-            "layout": visual_data.get("layout") or "horizontal",
-            "durationInFrames": duration_frames,
-            "captionSegments": caption_segments,
-        }
-    # keyword_cards_grid — 2×2 grid variant of KeywordCards
-    elif template_type == "keyword_cards_grid":
-        raw_icons = visual_data.get("icons")
-        raw_descs = visual_data.get("descriptions")
-        return {
-            "title": visual_data.get("title") or title or None,
-            "keywords": [str(k) for k in (visual_data.get("keywords") or items)],
-            "icons": [str(x) for x in raw_icons] if raw_icons else None,
-            "descriptions": [str(x) for x in raw_descs] if raw_descs else None,
-            "durationInFrames": duration_frames,
-            "captionSegments": caption_segments,
-        }
-    # keyword_cards_stack — vertical stack variant of KeywordCards
-    elif template_type == "keyword_cards_stack":
-        raw_descs = visual_data.get("descriptions")
-        return {
-            "title": visual_data.get("title") or title or None,
-            "keywords": [str(k) for k in (visual_data.get("keywords") or items)],
-            "descriptions": [str(x) for x in raw_descs] if raw_descs else None,
             "durationInFrames": duration_frames,
             "captionSegments": caption_segments,
         }

@@ -18,6 +18,7 @@ function resolvePosition(config: CaptionStyleConfig): React.CSSProperties {
     maxWidth: config.maxWidth,
     textAlign: config.align,
     pointerEvents: "none",
+    zIndex: 1000,
   };
 
   if (config.position === "bottom") {

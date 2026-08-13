@@ -10,12 +10,8 @@ import { ArchTree } from "./templates/ArchTree";
 import { Timeline } from "./templates/Timeline";
 import { CompareTwo } from "./templates/CompareTwo";
 import { TableCompare } from "./templates/TableCompare";
-import { KeywordCards } from "./templates/KeywordCards";
 import { SummaryCard } from "./templates/SummaryCard";
 import { SplitTitle } from "./templates/SplitTitle";
-import { UnderlineTitle } from "./templates/UnderlineTitle";
-import { SideAccentTitle } from "./templates/SideAccentTitle";
-import { GlassCards } from "./templates/GlassCards";
 import { BorderCards } from "./templates/BorderCards";
 import { NumberBadgeList } from "./templates/NumberBadgeList";
 import { PillTags } from "./templates/PillTags";
@@ -28,8 +24,6 @@ import { ScalePopCards } from "./templates/ScalePopCards";
 import { CodeEditorComposition } from "./templates/CodeEditorComposition";
 import { TerminalComposition } from "./templates/TerminalComposition";
 import { ChatConversationComposition } from "./templates/ChatConversationComposition";
-import { ArchitectureDiagramComposition } from "./templates/ArchitectureDiagramComposition";
-import { AgentWorkflowComposition } from "./templates/AgentWorkflowComposition";
 import { fps } from "./theme/tokens";
 import { fontFaces } from "./theme/fonts";
 
@@ -262,23 +256,6 @@ export const RemotionRoot: React.FC = () => {
       />
 
       <Composition
-        id="KeywordCards"
-        component={KeywordCards as React.ComponentType<any>}
-        durationInFrames={fps * 8}
-        fps={fps}
-        width={CANVAS_W}
-        height={CANVAS_H}
-        defaultProps={{
-          title: "수익화까지 가기 위한 이해 필요",
-          keywords: ["바이브 코딩", "비즈니스 실현", "자동화 사업"],
-          icons: ["💻", "🧠", "🚀"],
-          descriptions: ["도구의 활용", "BM 기획과 적용", "무한 창업 모드"],
-          durationInFrames: fps * 8,
-        }}
-        calculateMetadata={({ props }) => ({ durationInFrames: (props as any).durationInFrames ?? fps * 8 })}
-      />
-
-      <Composition
         id="SummaryCard"
         component={SummaryCard as React.ComponentType<any>}
         durationInFrames={fps * 8}
@@ -307,54 +284,6 @@ export const RemotionRoot: React.FC = () => {
           title: "좌우 분할 레이아웃",
           subtitle: "핵심 개념 강조",
           detail: "오른쪽 패널에 상세 내용이 표시됩니다",
-          durationInFrames: fps * 8,
-        }}
-        calculateMetadata={({ props }) => ({ durationInFrames: (props as any).durationInFrames ?? fps * 8 })}
-      />
-
-      <Composition
-        id="UnderlineTitle"
-        component={UnderlineTitle as React.ComponentType<any>}
-        durationInFrames={fps * 8}
-        fps={fps}
-        width={CANVAS_W}
-        height={CANVAS_H}
-        defaultProps={{
-          title: "밑줄 강조 제목",
-          subtitle: "애니메이션 언더라인",
-          label: "POINT",
-          durationInFrames: fps * 8,
-        }}
-        calculateMetadata={({ props }) => ({ durationInFrames: (props as any).durationInFrames ?? fps * 8 })}
-      />
-
-      <Composition
-        id="SideAccentTitle"
-        component={SideAccentTitle as React.ComponentType<any>}
-        durationInFrames={fps * 8}
-        fps={fps}
-        width={CANVAS_W}
-        height={CANVAS_H}
-        defaultProps={{
-          title: "사이드 액센트 제목",
-          subtitle: "왼쪽 수직 바 강조",
-          tag: "KEY",
-          durationInFrames: fps * 8,
-        }}
-        calculateMetadata={({ props }) => ({ durationInFrames: (props as any).durationInFrames ?? fps * 8 })}
-      />
-
-      <Composition
-        id="GlassCards"
-        component={GlassCards as React.ComponentType<any>}
-        durationInFrames={fps * 8}
-        fps={fps}
-        width={CANVAS_W}
-        height={CANVAS_H}
-        defaultProps={{
-          title: "글라스모피즘 카드",
-          items: ["첫 번째 항목", "두 번째 항목", "세 번째 항목"],
-          icons: ["💡", "🚀", "🎯"],
           durationInFrames: fps * 8,
         }}
         calculateMetadata={({ props }) => ({ durationInFrames: (props as any).durationInFrames ?? fps * 8 })}
@@ -560,58 +489,6 @@ export const RemotionRoot: React.FC = () => {
             { role: "user", text: "실행 중 오류가 나면?" },
             { role: "assistant", name: "Reviewer", text: "Fail Loud 원칙에 따라 즉시 에러를 노출하고 종료합니다." },
           ],
-          durationInFrames: fps * 10,
-        }}
-        calculateMetadata={({ props }) => ({ durationInFrames: (props as any).durationInFrames ?? fps * 10 })}
-      />
-
-      <Composition
-        id="ArchitectureDiagramComposition"
-        component={ArchitectureDiagramComposition as React.ComponentType<any>}
-        durationInFrames={fps * 10}
-        fps={fps}
-        width={CANVAS_W}
-        height={CANVAS_H}
-        defaultProps={{
-          title: "멀티 에이전트 아키텍처",
-          nodes: [
-            { id: "orchestrator", label: "Orchestrator", type: "primary", x: 50, y: 20 },
-            { id: "planner",      label: "Planner",      type: "secondary", x: 20, y: 60 },
-            { id: "executor",     label: "Executor",     type: "secondary", x: 50, y: 60 },
-            { id: "reviewer",     label: "Reviewer",     type: "secondary", x: 80, y: 60 },
-            { id: "storage",      label: "Vector DB",    type: "storage",   x: 50, y: 90 },
-          ],
-          edges: [
-            { from: "orchestrator", to: "planner",  animated: false },
-            { from: "orchestrator", to: "executor", animated: true },
-            { from: "orchestrator", to: "reviewer", animated: false },
-            { from: "executor",     to: "storage",  label: "embed", animated: true },
-          ],
-          durationInFrames: fps * 10,
-        }}
-        calculateMetadata={({ props }) => ({ durationInFrames: (props as any).durationInFrames ?? fps * 10 })}
-      />
-
-      <Composition
-        id="AgentWorkflowComposition"
-        component={AgentWorkflowComposition as React.ComponentType<any>}
-        durationInFrames={fps * 10}
-        fps={fps}
-        width={CANVAS_W}
-        height={CANVAS_H}
-        defaultProps={{
-          title: "HCHAIN 실행 흐름",
-          agent_name: "HCHAIN Runtime",
-          steps: [
-            { label: "PLAN",     description: "미션 분해" },
-            { label: "RESEARCH", description: "컨텍스트 수집" },
-            { label: "ACTION",   description: "코드 실행" },
-            { label: "REVIEW",   description: "결과 검토" },
-            { label: "VALIDATE", description: "DoD 체크" },
-            { label: "DONE",     description: "완료 보고" },
-          ],
-          current_step: 3,
-          layout: "horizontal",
           durationInFrames: fps * 10,
         }}
         calculateMetadata={({ props }) => ({ durationInFrames: (props as any).durationInFrames ?? fps * 10 })}

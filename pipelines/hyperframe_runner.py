@@ -229,7 +229,6 @@ def run(
         "timeline":          "Timeline",
         "compare_two":       "CompareTwo",
         "table_compare":     "TableCompare",
-        "keyword_cards":     "KeywordCards",
         "summary_card":      "SummaryCard",
         "quote_highlight":   "Quote",
         "before_after":      "CompareTwo",

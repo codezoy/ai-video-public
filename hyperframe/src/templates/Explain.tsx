@@ -1,10 +1,12 @@
 import React from "react";
 import { useCurrentFrame, useVideoConfig, AbsoluteFill } from "remotion";
 import { bg, accent, text, font_title } from "../theme/tokens";
+import { colors, radius, shadow, spacing, typography } from "../theme/designTokens";
 import { fadeIn, slideUp } from "../motion/primitives";
 import type { ExplainProps } from "../types/scenes";
 import { useWordSyncTrigger } from "../motion/wordSync";
 import { CaptionOverlay } from "../components/CaptionOverlay";
+import { SAFE_AREA } from "../lib/safearea";
 
 export const Explain: React.FC<ExplainProps> = ({
   title,
@@ -21,101 +23,142 @@ export const Explain: React.FC<ExplainProps> = ({
   const titleY = slideUp(frame, 0, unitFrames);
 
   const wordSync = useWordSyncTrigger(motionAnchors, unitFrames, bullets.length);
+  const bulletCount = Math.max(1, bullets.length);
+  const columns = bulletCount <= 3 ? bulletCount : bulletCount <= 6 ? 3 : 4;
+  const compact = bulletCount >= 6;
 
   return (
     <AbsoluteFill
       style={{
         backgroundColor: bg,
-        display: "flex",
-        flexDirection: "row",
         fontFamily: font_title,
         position: "relative",
+        padding: `${SAFE_AREA.top}px ${SAFE_AREA.right}px ${SAFE_AREA.bottom + 142}px ${SAFE_AREA.left}px`,
+        boxSizing: "border-box",
       }}
     >
-      {/* Left 1/3 — title column */}
       <div
         style={{
-          width: "33.33%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "flex-end",
-          paddingRight: 48,
-          borderRight: `2px solid ${accent}40`,
+          width: "100%",
+          height: "100%",
+          display: "grid",
+          gridTemplateRows: "auto minmax(0, 1fr)",
+          rowGap: spacing.xl,
         }}
       >
-        <h2
+        <div
           style={{
-            color: accent,
-            fontSize: 52,
-            fontWeight: 700,
-            textAlign: "right",
-            margin: 0,
-            lineHeight: 1.3,
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) auto",
+            alignItems: "end",
+            columnGap: spacing.xl,
             opacity: titleOpacity,
             transform: `translateY(${titleY}px)`,
           }}
         >
-          {title}
-        </h2>
-      </div>
+          <h2
+            style={{
+              color: text,
+              fontSize: typography.section.fontSize,
+              fontWeight: typography.section.fontWeight,
+              textAlign: "left",
+              margin: 0,
+              lineHeight: typography.section.lineHeight,
+              wordBreak: "keep-all",
+            }}
+          >
+            {title}
+          </h2>
+          <div
+            style={{
+              color: accent,
+              fontSize: typography.label.fontSize,
+              fontWeight: typography.label.fontWeight,
+              letterSpacing: typography.label.letterSpacing,
+              textTransform: "uppercase",
+              paddingBottom: 8,
+              whiteSpace: "nowrap",
+            }}
+          >
+            EXPLAIN
+          </div>
+        </div>
 
-      {/* Right 2/3 — bullets */}
-      <div
-        style={{
-          width: "66.67%",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          paddingLeft: 64,
-          paddingRight: 80,
-          gap: 28,
-        }}
-      >
-        {bullets.map((bullet, i) => {
-          const progress = wordSync.progress(i);
-          const opacity = wordSync.isWordSync
-            ? progress
-            : fadeIn(frame, unitFrames + i * unitFrames, unitFrames);
-          const y = wordSync.isWordSync
-            ? (1 - progress) * 24
-            : slideUp(frame, unitFrames + i * unitFrames, unitFrames);
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+            gap: compact ? spacing.md : spacing.lg,
+            alignSelf: "center",
+            width: "100%",
+          }}
+        >
+          {bullets.map((bullet, i) => {
+            const progress = wordSync.progress(i);
+            const delay = unitFrames + i * Math.round(unitFrames * 0.55);
+            const opacity = wordSync.isWordSync ? progress : fadeIn(frame, delay, unitFrames);
+            const y = wordSync.isWordSync
+              ? (1 - progress) * 20
+              : slideUp(frame, delay, unitFrames, 20);
 
-          return (
+            return (
+              <div
+                key={i}
+                style={{
+                  minHeight: compact ? 150 : 190,
+                  display: "grid",
+                  gridTemplateRows: "auto 1fr",
+                  rowGap: spacing.sm,
+                  padding: compact ? `${spacing.md}px` : `${spacing.lg}px`,
+                  borderRadius: radius.lg,
+                  border: `1.5px solid ${accent}35`,
+                  backgroundColor: colors.surface,
+                  boxShadow: shadow.card,
+                  opacity,
+                  transform: `translateY(${y}px)`,
+                }}
+              >
+                <div
+                  style={{
+                    color: accent,
+                    fontSize: compact ? 22 : 26,
+                    fontWeight: 800,
+                    lineHeight: 1,
+                  }}
+                >
+                  {String(i + 1).padStart(2, "0")}
+                </div>
+                <p
+                  style={{
+                    color: text,
+                    fontSize: compact ? 26 : 32,
+                    fontWeight: 500,
+                    margin: 0,
+                    lineHeight: 1.42,
+                    wordBreak: "keep-all",
+                    alignSelf: "center",
+                  }}
+                >
+                  {bullet}
+                </p>
+              </div>
+            );
+          })}
+          {bullets.length === 0 && (
             <div
-              key={i}
               style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 20,
-                opacity,
-                transform: `translateY(${y}px)`,
+                color: `${text}99`,
+                fontSize: 30,
+                padding: spacing.lg,
+                border: `1.5px solid ${accent}30`,
+                borderRadius: radius.lg,
+                backgroundColor: colors.surface,
               }}
             >
-              <span
-                style={{
-                  color: accent,
-                  fontSize: 24,
-                  fontWeight: 700,
-                  flexShrink: 0,
-                  marginTop: 4,
-                }}
-              >
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <p
-                style={{
-                  color: text,
-                  fontSize: 32,
-                  fontWeight: 400,
-                  margin: 0,
-                  lineHeight: 1.6,
-                }}
-              >
-                {bullet}
-              </p>
+              {title}
             </div>
-          );
-        })}
+          )}
+        </div>
       </div>
 
       <CaptionOverlay captionSegments={captionSegments} />

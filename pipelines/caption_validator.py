@@ -24,6 +24,8 @@ log = logging.getLogger(__name__)
 COVERAGE_THRESHOLD = 0.95   # 95% 이상 커버리지 요구
 MAX_GAP_MS = 1000           # 1초 초과 갭 FAIL
 MAX_RETRY = 3               # 최대 재생성 횟수
+LONG_SEGMENT_CHARS = 50     # 길이 경고 기준
+LONG_SEGMENT_MS = 4500      # 표시 시간 경고 기준
 
 
 @dataclass
@@ -176,8 +178,36 @@ def _validate_scene(scene: dict[str, Any]) -> SceneValidationResult:
                 f"({g['start_ms']}ms ~ {g['end_ms']}ms)"
             )
 
+    # Rule 8: monotonic timing / overlap / bounds / long segment report
+    prev_end = 0
+    for idx, seg in enumerate(segs):
+        start_ms = int(seg.get("start_ms", -1))
+        end_ms = int(seg.get("end_ms", -1))
+        text = str(seg.get("text", ""))
+        if start_ms < 0:
+            errors.append(f"캡션 {idx}: start_ms < 0")
+        if end_ms <= start_ms:
+            errors.append(f"캡션 {idx}: start_ms >= end_ms ({start_ms} >= {end_ms})")
+        if idx > 0 and start_ms < prev_end:
+            errors.append(f"캡션 {idx}: 이전 캡션과 overlap ({start_ms} < {prev_end})")
+        if audio_dur > 0 and end_ms > audio_dur:
+            errors.append(f"캡션 {idx}: end_ms > audio_duration_ms ({end_ms} > {audio_dur})")
+        if len(text) > LONG_SEGMENT_CHARS or (end_ms - start_ms) > LONG_SEGMENT_MS:
+            log.warning(
+                "씬 %s 캡션 %d long segment: chars=%d duration_ms=%d",
+                sid, idx, len(text), end_ms - start_ms,
+            )
+        prev_end = end_ms
+
+    # Rule 9: text preservation against narration, where direct caption source is canonical.
+    if scene.get("caption_source") == "direct":
+        narration_text = str(scene.get("narration", "")).replace(" ", "")
+        caption_text = "".join(str(s.get("text", "")) for s in segs).replace(" ", "")
+        if narration_text and caption_text != narration_text:
+            errors.append("caption text가 narration 원문과 다름")
+
     # Rule 2: word_timestamps 기반 문장 누락 검사
-    if not missing_wt:
+    if not missing_wt and scene.get("caption_timing_source") != "whisper_timing":
         wts: list[dict] = scene.get("word_timestamps", [])
         wt_words = {wt["word"].strip() for wt in wts if wt.get("word", "").strip()}
         cap_text = " ".join(s.get("text", "") for s in segs)

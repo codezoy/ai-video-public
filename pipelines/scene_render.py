@@ -18,7 +18,10 @@ Scene Object fields read:
 
 Scene Object fields written (in-place):
     render_path             – absolute path of generated MP4
-    render_duration_frames  – total frames = ceil(FPS × audio_duration_sec)
+    render_duration_frames  – total frames = ceil(FPS × (audio_duration_sec +
+                              SCENE_TAIL_PADDING_SEC)); matches the physical
+                              MP4 length (audio + hold/silence tail padding),
+                              not the narration-only duration.
     stages_done             – "render" appended if not already present
 """
 from __future__ import annotations
@@ -32,6 +35,11 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+try:
+    from video_defaults import get_scene_tail_padding_sec  # type: ignore[import]
+except ImportError:
+    from pipelines.video_defaults import get_scene_tail_padding_sec  # type: ignore[no-redef]
 
 try:
     from rich.console import Console
@@ -56,6 +64,11 @@ CANVAS_W    = int(os.getenv("VIDEO_WIDTH", "1920"))
 CANVAS_H    = int(os.getenv("VIDEO_HEIGHT","1080"))
 FFMPEG_BIN  = os.getenv("FFMPEG_BIN",  shutil.which("ffmpeg")  or "ffmpeg")
 FFPROBE_BIN = os.getenv("FFPROBE_BIN", shutil.which("ffprobe") or "ffprobe")
+
+# 씬 종료 시점 hold(정지 화면) + 무음 tail padding. 씬 전환 시 컷이 급작스럽지
+# 않도록 각 sceneNN.mp4 끝에 부가된다. audio/sceneNN.mp3 원본이나 자막
+# caption_segments(end_ms)는 영향받지 않는다 — 렌더 산출물에만 적용.
+SCENE_TAIL_PADDING_SEC = get_scene_tail_padding_sec()
 
 
 # ── Duration helpers ──────────────────────────────────────────────────────────
@@ -91,6 +104,38 @@ def _resolve_duration(scene: dict, audio_path: Path) -> float | None:
     return _ffprobe_duration(audio_path)
 
 
+def _has_caption_segments(scene: dict[str, Any]) -> bool:
+    """Return True when a scene carries real caption text that must not be lost."""
+    segments = scene.get("caption_segments")
+    if not isinstance(segments, list):
+        return False
+    for seg in segments:
+        if isinstance(seg, dict) and str(seg.get("text") or "").strip():
+            return True
+    return False
+
+
+def _is_template_validation_failure(exc: Exception) -> bool:
+    text = str(exc)
+    return (
+        "retired_template_type:" in text
+        or "Retired template type rejected" in text
+        or "Unsupported template type" in text
+    )
+
+
+def _validate_scene_template(scene: dict[str, Any]) -> None:
+    try:
+        pipelines_dir = str(Path(__file__).parent)
+        if pipelines_dir not in sys.path:
+            sys.path.insert(0, pipelines_dir)
+        from render_template import validate_template_type  # type: ignore[import]
+
+        validate_template_type(scene.get("template_type"), scene_id=scene.get("id"))
+    except Exception as exc:
+        raise RuntimeError(f"scene template validation failed: {exc}") from exc
+
+
 # ── ffmpeg helpers ────────────────────────────────────────────────────────────
 
 def _run_ffmpeg(cmd: list[str], label: str) -> None:
@@ -107,18 +152,33 @@ def _mux_audio(
     audio_path: Path,
     audio_dur: float,
     output_path: Path,
+    *,
+    padding_sec: float = SCENE_TAIL_PADDING_SEC,
 ) -> None:
-    """ffmpeg: copy video stream from Remotion MP4 + mux AAC audio → scene MP4."""
+    """ffmpeg: mux AAC audio into Remotion MP4 + append hold/silence tail padding.
+
+    ``video_path`` (Remotion render) is exactly ``audio_dur`` long, so unlike
+    the static/animated paths there is no natural over-provisioned hold
+    buffer to lean on — ``-c:v copy`` cannot extend a stream, so this re-encodes
+    with an explicit ``tpad`` clone of ``padding_sec`` at the tail. Audio gets
+    the matching silence tail via ``apad``.
+    """
+    total_dur = audio_dur + padding_sec
     cmd = [
         FFMPEG_BIN, "-y",
         "-i", str(video_path),
         "-i", str(audio_path),
-        "-map", "0:v",
+        "-filter_complex",
+        f"[0:v]tpad=stop_mode=clone:stop_duration={padding_sec:.3f}[v]",
+        "-map", "[v]",
         "-map", "1:a",
-        "-c:v", "copy",
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-r", str(VIDEO_FPS),
+        "-af", f"apad=pad_dur={padding_sec:.3f}",
         "-c:a", "aac",
         "-b:a", "192k",
-        "-t", f"{audio_dur:.3f}",
+        "-t", f"{total_dur:.3f}",
         str(output_path),
     ]
     _run_ffmpeg(cmd, output_path.name)
@@ -129,8 +189,11 @@ def _render_static(
     audio_path: Path,
     audio_dur: float,
     output_path: Path,
+    *,
+    padding_sec: float = SCENE_TAIL_PADDING_SEC,
 ) -> None:
-    """ffmpeg: static PNG looped for audio_dur seconds + audio → MP4."""
+    """ffmpeg: static PNG looped for audio_dur+padding seconds + audio(+silence tail) → MP4."""
+    total_dur = audio_dur + padding_sec
     cmd = [
         FFMPEG_BIN, "-y",
         "-loop", "1",
@@ -140,7 +203,8 @@ def _render_static(
         "-tune", "stillimage",
         "-pix_fmt", "yuv420p",
         "-r", str(VIDEO_FPS),
-        "-t", f"{audio_dur:.3f}",
+        "-af", f"apad=pad_dur={padding_sec:.3f}",
+        "-t", f"{total_dur:.3f}",
         "-c:a", "aac",
         "-b:a", "192k",
         "-shortest",
@@ -154,20 +218,30 @@ def _render_animated(
     audio_path: Path,
     audio_dur: float,
     output_path: Path,
+    *,
+    padding_sec: float = SCENE_TAIL_PADDING_SEC,
 ) -> None:
-    """ffmpeg: animated MP4 + audio → scene MP4 (last-frame hold if audio longer)."""
+    """ffmpeg: animated MP4 + audio → scene MP4 (last-frame hold covers audio_dur+padding)."""
+    total_dur = audio_dur + padding_sec
     cmd = [
         FFMPEG_BIN, "-y",
         "-i", str(animated_path),
         "-i", str(audio_path),
         "-filter_complex",
-        f"[0:v]tpad=stop_mode=clone:stop_duration={audio_dur:.3f}[v]",
+        # stop_duration=total_dur over-provisions clone-hold frames by at
+        # least total_dur regardless of the animated clip's own length, so
+        # video stream length (animated_duration + total_dur) always exceeds
+        # the -t target even for animated clips shorter than padding_sec —
+        # -shortest can never truncate before total_dur is reached. The
+        # exact output length is enforced below via -t.
+        f"[0:v]tpad=stop_mode=clone:stop_duration={total_dur:.3f}[v]",
         "-map", "[v]",
         "-map", "1:a",
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
         "-r", str(VIDEO_FPS),
-        "-t", f"{audio_dur:.3f}",
+        "-af", f"apad=pad_dur={padding_sec:.3f}",
+        "-t", f"{total_dur:.3f}",
         "-c:a", "aac",
         "-b:a", "192k",
         "-shortest",
@@ -188,7 +262,10 @@ def render_scene(
 
     Reads ``audio_path`` and ``slide_path`` from the scene dict.
     Updates scene in-place with ``render_path``, ``render_duration_frames``,
-    and appends ``"render"`` to ``stages_done``.
+    and appends ``"render"`` to ``stages_done``. ``render_duration_frames``
+    reflects the physical output file's length, i.e. audio duration plus
+    ``SCENE_TAIL_PADDING_SEC`` — it describes the rendered MP4, not the
+    narration-only duration.
 
     Args:
         scene:       Scene Object dict (v1 or v2 compatible).
@@ -202,21 +279,62 @@ def render_scene(
         RuntimeError: Missing inputs or ffmpeg failure.
     """
     sid = scene.get("id", "?")
+    _validate_scene_template(scene)
+
+    # Resolve audio duration up front so a pre-existing output_path's actual
+    # duration can be checked against the current padding policy before
+    # deciding whether it's reusable.
+    _raw_audio_for_cache = scene.get("audio_path") or ""
+    _audio_dur_for_cache = (
+        _resolve_duration(scene, Path(_raw_audio_for_cache)) if _raw_audio_for_cache else None
+    )
 
     # ── Cache check ────────────────────────────────────────────────────────────
+    effective_force = force
     if output_path.exists() and not force:
-        _log(f"씬 {sid}: skip (캐시 존재) → {output_path.name}", "warning")
-        scene["render_path"] = str(output_path)
-        if scene.get("render_duration_frames") is None:
-            raw_audio = scene.get("audio_path") or ""
-            dur = _resolve_duration(scene, Path(raw_audio))
-            if dur is not None:
-                scene["render_duration_frames"] = math.ceil(VIDEO_FPS * dur)
-        stages_done: list[str] = list(scene.get("stages_done") or [])
-        if "render" not in stages_done:
-            stages_done.append("render")
-        scene["stages_done"] = stages_done
-        return output_path
+        cached_dur = _ffprobe_duration(output_path)
+        cache_valid = True
+        if _audio_dur_for_cache is not None:
+            expected_dur = _audio_dur_for_cache + SCENE_TAIL_PADDING_SEC
+            frame_tolerance_sec = 1.0 / VIDEO_FPS
+            if cached_dur is None or abs(cached_dur - expected_dur) > frame_tolerance_sec:
+                cache_valid = False
+        # If audio duration can't be resolved at all, there's no padding
+        # target to validate against — fall back to trusting the cache
+        # (matches prior conservative behavior for that edge case only).
+
+        if cache_valid:
+            _log(f"씬 {sid}: skip (캐시 존재, padding 검증 통과) → {output_path.name}", "warning")
+            scene["render_path"] = str(output_path)
+            # Always overwrite with the freshly-probed/expected value, never
+            # gate on "is None" — the scene dict may already carry a stale
+            # pre-padding render_duration_frames (e.g. loaded from an older
+            # scenes.json or an interrupted run), and since we've just
+            # validated the cached MP4 itself is correctly padded, that
+            # probed truth should always win over whatever was there before.
+            if cached_dur is not None:
+                scene["render_duration_frames"] = math.ceil(VIDEO_FPS * cached_dur)
+            elif _audio_dur_for_cache is not None:
+                scene["render_duration_frames"] = math.ceil(
+                    VIDEO_FPS * (_audio_dur_for_cache + SCENE_TAIL_PADDING_SEC)
+                )
+            stages_done: list[str] = list(scene.get("stages_done") or [])
+            if "render" not in stages_done:
+                stages_done.append("render")
+            scene["stages_done"] = stages_done
+            return output_path
+
+        # Cache invalid (missing/mismatched padding) — invalidate and fall
+        # through to a full re-render below, overwriting output_path.
+        # audio/sceneNN.mp3 (the TTS source) is never touched here.
+        _log(
+            f"씬 {sid}: 캐시 무효화 — 기존 mp4 길이"
+            f"({'N/A' if cached_dur is None else f'{cached_dur:.3f}s'}) != "
+            f"기대값({_audio_dur_for_cache + SCENE_TAIL_PADDING_SEC:.3f}s = "
+            f"audio_dur+padding) → 재렌더",
+            "warning",
+        )
+        effective_force = True
 
     # ── Remotion 우선 렌더 시도 ─────────────────────────────────────────────────
     # hyperframe/ 디렉토리가 있을 때만 시도. 실패 시 PNG fallback으로 진행.
@@ -233,7 +351,7 @@ def render_scene(
             _h = int(os.getenv("VIDEO_HEIGHT", str(CANVAS_H)))
             output_path.parent.mkdir(parents=True, exist_ok=True)
             _video_only = output_path.with_name(output_path.stem + "_video_only.mp4")
-            _rt.render_scene(scene, _video_only, fps=_fps, width=_w, height=_h, force=force)
+            _rt.render_scene(scene, _video_only, fps=_fps, width=_w, height=_h, force=effective_force)
             # Mux audio into Remotion video-only output
             _raw_audio = scene.get("audio_path") or ""
             _audio_p = Path(_raw_audio) if _raw_audio else None
@@ -247,7 +365,9 @@ def render_scene(
             # Scene Object 업데이트
             scene["render_path"] = str(output_path)
             if _dur is not None:
-                scene["render_duration_frames"] = math.ceil(VIDEO_FPS * _dur)
+                scene["render_duration_frames"] = math.ceil(
+                    VIDEO_FPS * (_dur + SCENE_TAIL_PADDING_SEC)
+                )
             _stages: list[str] = list(scene.get("stages_done") or [])
             if "render" not in _stages:
                 _stages.append("render")
@@ -255,6 +375,16 @@ def render_scene(
             _log(f"씬 {sid}: Remotion 렌더 완료 → {output_path.name}", "success")
             return output_path
         except Exception as _exc:
+            if _is_template_validation_failure(_exc):
+                raise RuntimeError(
+                    f"씬 {sid}: Remotion template validation 실패로 PNG fallback 금지 "
+                    f"({_exc})"
+                ) from _exc
+            if _has_caption_segments(scene):
+                raise RuntimeError(
+                    f"씬 {sid}: Remotion 실패, caption_segments 존재로 PNG fallback 금지 "
+                    f"({_exc})"
+                ) from _exc
             _log(f"씬 {sid}: Remotion 실패 → PNG fallback ({_exc})", "warning")
 
     # ── Resolve inputs ─────────────────────────────────────────────────────────
@@ -282,7 +412,7 @@ def render_scene(
             "(audio_duration_sec/ms 없고 ffprobe도 실패)"
         )
 
-    duration_frames = math.ceil(VIDEO_FPS * audio_dur)
+    duration_frames = math.ceil(VIDEO_FPS * (audio_dur + SCENE_TAIL_PADDING_SEC))
 
     # ── Animated MP4 variant check ─────────────────────────────────────────────
     animated_path = slide_path.parent / (slide_path.stem + "_animated.mp4")
@@ -332,6 +462,22 @@ def render_scenes(
         list of successfully rendered MP4 paths.
     """
     scenes_dir.mkdir(parents=True, exist_ok=True)
+
+    # Validate the whole batch before writing scene outputs. This catches stale
+    # worker artifacts that still contain retired/unsupported templates and
+    # avoids producing a partial final video.
+    try:
+        pipelines_dir = str(Path(__file__).parent)
+        if pipelines_dir not in sys.path:
+            sys.path.insert(0, pipelines_dir)
+        from render_template import validate_scene_templates  # type: ignore[import]
+
+        validate_scene_templates(scenes)
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"scene template pre-validation failed: {exc}") from exc
+
     rendered: list[Path] = []
     errors: list[str] = []
 
@@ -357,6 +503,10 @@ def render_scenes(
         + (f", {len(errors)}개 실패" if errors else ""),
         "success" if not errors else "warning",
     )
+    if errors:
+        raise RuntimeError(
+            f"scene_render failed for {len(errors)}/{total} scenes:\n" + "\n".join(errors)
+        )
     return rendered
 
 

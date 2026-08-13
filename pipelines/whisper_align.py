@@ -25,6 +25,14 @@ PROJECT_ROOT = Path(os.environ.get("PROJECT_ROOT", Path(__file__).parent.parent)
 WORK_DIR = Path(os.environ.get("WORK_DIR", PROJECT_ROOT / "work"))
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 WHISPER_LANGUAGE = os.environ.get("WHISPER_LANGUAGE", "ko")
+# Mirrors whisper.load_model()'s own default resolution exactly (including
+# XDG_CACHE_HOME support) so cache-hit detection here never disagrees with
+# where whisper itself will actually look/write.
+_WHISPER_DEFAULT_CACHE_BASE = os.path.join(os.path.expanduser("~"), ".cache")
+WHISPER_DOWNLOAD_ROOT = os.environ.get(
+    "WHISPER_DOWNLOAD_ROOT",
+    os.path.join(os.getenv("XDG_CACHE_HOME", _WHISPER_DEFAULT_CACHE_BASE), "whisper"),
+)
 
 
 class WordTimestamp(TypedDict):
@@ -36,6 +44,39 @@ class WordTimestamp(TypedDict):
 def _cache_path(audio_path: Path) -> Path:
     h = hashlib.sha256(audio_path.read_bytes()).hexdigest()[:12]
     return WORK_DIR / "whisper" / f"{audio_path.stem}_{h}.json"
+
+
+def _model_is_cached(model_name: str) -> bool:
+    """Return True if the whisper model weights are already cached AND valid.
+
+    ``whisper.load_model()`` transparently downloads model weights over the
+    network on first use when they are not cached (or re-downloads them when
+    the cached file's checksum doesn't match). That download is a separate
+    cost/network concern from running an already-cached model locally, so it
+    must be gated by ``allow_external_web`` rather than ``allow_local_whisper``
+    (see align()). This mirrors whisper's own ``_download()`` cache-validity
+    check (file exists + sha256 matches the hash embedded in the model URL)
+    so a corrupt/truncated cache file is correctly treated as "not cached"
+    instead of silently permitting a bypass of the network guard.
+    """
+    try:
+        import whisper  # type: ignore
+    except ImportError:
+        return False
+    url = getattr(whisper, "_MODELS", {}).get(model_name)
+    if not url:
+        # Unknown model name (e.g. a local path) — let whisper handle it;
+        # treat as "cached" so we don't block a legitimate local file.
+        return True
+    target = Path(WHISPER_DOWNLOAD_ROOT) / os.path.basename(url)
+    if not target.is_file():
+        return False
+    expected_sha256 = url.split("/")[-2]
+    try:
+        actual_sha256 = hashlib.sha256(target.read_bytes()).hexdigest()
+    except OSError:
+        return False
+    return actual_sha256 == expected_sha256
 
 
 def align(audio_path: Path | str, expected_text: str = "") -> list[WordTimestamp]:
@@ -58,7 +99,10 @@ def align(audio_path: Path | str, expected_text: str = "") -> list[WordTimestamp
         log.info("Whisper cache hit: %s", cache)
         return json.loads(cache.read_text())
 
-    ensure_provider_allowed("whisper_api", "whisper_align")
+    # Local openai-whisper model execution (.venv) — not an external/paid
+    # API call, so it is gated by allow_local_whisper (default true), not
+    # allow_whisper_api (reserved for a hosted Whisper API, default false).
+    ensure_provider_allowed("whisper_local", "whisper_align")
 
     try:
         import whisper  # type: ignore
@@ -66,8 +110,15 @@ def align(audio_path: Path | str, expected_text: str = "") -> list[WordTimestamp
         log.error("openai-whisper not installed. Run: pip install openai-whisper")
         sys.exit(1)
 
+    if not _model_is_cached(WHISPER_MODEL):
+        # First-time use of this model would download weights over the
+        # network — that is an external-web concern, independent of the
+        # allow_local_whisper flag which only covers already-cached,
+        # offline inference.
+        ensure_provider_allowed("external_web", "whisper_align_model_download")
+
     log.info("Loading Whisper model '%s'...", WHISPER_MODEL)
-    model = whisper.load_model(WHISPER_MODEL)
+    model = whisper.load_model(WHISPER_MODEL, download_root=WHISPER_DOWNLOAD_ROOT)
 
     log.info("Transcribing %s ...", audio_path)
     result = model.transcribe(

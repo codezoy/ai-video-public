@@ -4,6 +4,7 @@ import { colors, typography, spacing, radius, shadow, fonts } from "../theme/des
 import { fadeIn, slideUp } from "../motion/primitives";
 import { SAFE_AREA } from "../lib/safearea";
 import { CaptionOverlay } from "../components/CaptionOverlay";
+import type { CaptionSegment } from "../types/scenes";
 
 interface CodeEditorProps {
   title: string;
@@ -13,7 +14,7 @@ interface CodeEditorProps {
   highlight_lines?: number[];
   focus_line?: number;
   typing?: boolean;
-  captionSegments?: { text: string; start: number; end: number }[] | null;
+  captionSegments?: CaptionSegment[] | null;
   durationInFrames?: number;
 }
 

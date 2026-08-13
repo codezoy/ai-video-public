@@ -163,7 +163,7 @@ function VideoDetail({ t, onGenerate, onEdit }) {
   );
 }
 
-function PromptDetail({ t, copied, onCopy, onGenerate, onPickVideo, videoTemplates = [] }) {
+function PromptDetail({ t, copied, copyError, onCopy, onGenerate, onPickVideo, videoTemplates = [] }) {
   return (
     <>
       <div className="te-dscroll">
@@ -196,7 +196,8 @@ function PromptDetail({ t, copied, onCopy, onGenerate, onPickVideo, videoTemplat
         </div>
       </div>
       <div className="te-df">
-        <button className="btn ghost" style={{ flex:'none' }} onClick={onCopy}>
+        {copyError && <span role="status" style={{color:'var(--bad)',fontSize:12,fontWeight:700,whiteSpace:'nowrap'}}>복사 실패</span>}
+        <button className="btn ghost" style={{ flex:'none' }} onClick={onCopy} disabled={!normalizeCopyText(t?.body)} aria-label="프롬프트 전문 복사">
           <Icon name={copied ? 'check' : 'copy'} size={15} /> {copied ? '복사됨' : '복사'}
         </button>
         <button className="btn primary" onClick={onGenerate}><Icon name="spark" size={15} /> 이 프롬프트로 생성</button>
@@ -244,14 +245,24 @@ function TemplatesExploreScreen({ view, setView, go, templates = [], videoTempla
   const [openV, setOpenV] = teS(null);
   const [openP, setOpenP] = teS(null);
   const [copied, setCopied] = teS(false);
+  const [copyError, setCopyError] = teS('');
   const videoTemplates = vtProp;
   const promptTemplates = templates;
 
+  teE(() => { setCopied(false); setCopyError(''); }, [openP?.id]);
+
   const closeAll = teC(() => { setOpenV(null); setOpenP(null); }, []);
 
-  const copyPrompt = () => {
-    if (openP && navigator.clipboard) navigator.clipboard.writeText(openP.body);
-    setCopied(true); setTimeout(() => setCopied(false), 1600);
+  const copyPrompt = async (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    setCopyError('');
+    const result = await copyTextToClipboard(openP?.body, { label: 'Prompt body' });
+    if (result.ok) {
+      setCopied(true); setTimeout(() => setCopied(false), 1600);
+    } else {
+      setCopyError(result.error); setTimeout(() => setCopyError(''), 2200);
+    }
   };
   const pickVideoFromPrompt = (v) => { setOpenP(null); setTab('video'); setTimeout(() => setOpenV(v), 60); };
   const goGenerate = () => { closeAll(); go && go('generate'); };
@@ -335,7 +346,7 @@ function TemplatesExploreScreen({ view, setView, go, templates = [], videoTempla
       )}
       {openP && (
         <DetailShell mode={detailMode} kind="prompt" title={openP.name} sub={openP.ko} onClose={closeAll}>
-          <PromptDetail t={openP} copied={copied} onCopy={copyPrompt} onGenerate={goGenerate} onPickVideo={pickVideoFromPrompt} videoTemplates={videoTemplates} />
+          <PromptDetail t={openP} copied={copied} copyError={copyError} onCopy={copyPrompt} onGenerate={goGenerate} onPickVideo={pickVideoFromPrompt} videoTemplates={videoTemplates} />
         </DetailShell>
       )}
     </div>

@@ -6,13 +6,12 @@ Defaults are intentionally conservative. Environment variables override
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import Any
 
 try:
-    import yaml  # type: ignore[import]
-except Exception:  # pragma: no cover - optional dependency in smoke tests
-    yaml = None  # type: ignore[assignment]
+    from video_defaults import load_video_defaults  # type: ignore[import]
+except ImportError:
+    from pipelines.video_defaults import load_video_defaults  # type: ignore[no-redef]
 
 
 DEFAULT_POLICY: dict[str, bool] = {
@@ -25,6 +24,11 @@ DEFAULT_POLICY: dict[str, bool] = {
     "allow_azure_tts": True,
     "allow_openai_tts": False,
     "allow_whisper_api": False,
+    # Local openai-whisper model execution (.venv, no external API call, no
+    # per-request cost) — distinct from allow_whisper_api which gates a
+    # hosted/paid Whisper API. Default-allowed since it's not a cost-guard
+    # concern; see whisper_align.py.
+    "allow_local_whisper": True,
     "allow_external_web": False,
 }
 
@@ -38,6 +42,7 @@ ENV_OVERRIDES: dict[str, str] = {
     "allow_azure_tts": "ALLOW_AZURE_TTS",
     "allow_openai_tts": "ALLOW_OPENAI_TTS",
     "allow_whisper_api": "ALLOW_WHISPER_API",
+    "allow_local_whisper": "ALLOW_LOCAL_WHISPER",
     "allow_external_web": "ALLOW_EXTERNAL_WEB",
 }
 
@@ -53,15 +58,16 @@ PROVIDER_FLAGS: dict[str, str] = {
     "azure": "allow_azure_tts",
     "openai_tts": "allow_openai_tts",
     "openai": "allow_openai_tts",
+    # Hosted/external Whisper API (not currently called anywhere in this
+    # codebase) — kept conservative (default false) for future use.
     "whisper_api": "allow_whisper_api",
     "whisper": "allow_whisper_api",
+    # Local .venv openai-whisper model load/inference — no external network
+    # call, no per-request cost. Used by pipelines/whisper_align.py.
+    "whisper_local": "allow_local_whisper",
     "gtts": "allow_external_web",
     "external_web": "allow_external_web",
 }
-
-_PROJECT_ROOT = Path(__file__).parent.parent
-_VIDEO_DEFAULTS = _PROJECT_ROOT / "config" / "video_defaults.yaml"
-
 
 class CostGuardBlocked(RuntimeError):
     """Raised when a provider is blocked by policy."""
@@ -72,12 +78,7 @@ def _parse_bool(raw: str) -> bool:
 
 
 def _load_config_policy() -> dict[str, bool]:
-    if yaml is None or not _VIDEO_DEFAULTS.exists():
-        return {}
-    try:
-        data = yaml.safe_load(_VIDEO_DEFAULTS.read_text(encoding="utf-8")) or {}
-    except Exception:
-        return {}
+    data = load_video_defaults()
     raw_policy = data.get("cost_guard", {}) or {}
     return {
         key: bool(raw_policy[key])

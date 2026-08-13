@@ -9,7 +9,6 @@ from typing import Any
 
 TEMPLATE_TYPES: tuple[str, ...] = (
     "hero_title",
-    "keyword_cards",
     "flow_steps",
     "timeline",
     "compare_two",
@@ -20,9 +19,6 @@ TEMPLATE_TYPES: tuple[str, ...] = (
     "before_after",
     # LOW-difficulty templates (Phase 1 expansion)
     "split_title",
-    "underline_title",
-    "side_accent_title",
-    "glass_cards",
     "border_cards",
     "number_badge_list",
     "pill_tags",
@@ -36,11 +32,7 @@ TEMPLATE_TYPES: tuple[str, ...] = (
     "code_editor",
     "terminal",
     "chat_conversation",
-    "architecture_diagram",
-    "agent_workflow",
     # Variant templates (Phase 3 — visual diversity)
-    "keyword_cards_grid",
-    "keyword_cards_stack",
     "timeline_zigzag",
     "timeline_cards",
     "flow_steps_circle",
@@ -54,7 +46,6 @@ _TEMPLATE_SET = frozenset(TEMPLATE_TYPES)
 # Remotion composition ID map (new lowercase → PascalCase composition)
 COMPOSITION_ID: dict[str, str] = {
     "hero_title":        "TitleOpen",
-    "keyword_cards":     "ListReveal",
     "flow_steps":        "FlowSteps",
     "timeline":          "Explain",
     "compare_two":       "Explain",
@@ -66,9 +57,6 @@ COMPOSITION_ID: dict[str, str] = {
     "before_after":    "CompareTwo",
     # LOW-difficulty templates (Phase 1 expansion)
     "split_title":        "SplitTitle",
-    "underline_title":    "UnderlineTitle",
-    "side_accent_title":  "SideAccentTitle",
-    "glass_cards":        "GlassCards",
     "border_cards":       "BorderCards",
     "number_badge_list":  "NumberBadgeList",
     "pill_tags":          "PillTags",
@@ -82,11 +70,7 @@ COMPOSITION_ID: dict[str, str] = {
     "code_editor":           "CodeEditorComposition",
     "terminal":              "TerminalComposition",
     "chat_conversation":     "ChatConversationComposition",
-    "architecture_diagram":  "ArchitectureDiagramComposition",
-    "agent_workflow":        "AgentWorkflowComposition",
     # Variant templates (Phase 3 — visual diversity)
-    "keyword_cards_grid":  "KeywordCards",
-    "keyword_cards_stack": "KeywordCards",
     "timeline_zigzag":     "Timeline",
     "timeline_cards":      "Timeline",
     "flow_steps_circle":   "FlowSteps",
@@ -110,13 +94,6 @@ VISUAL_DATA_SCHEMA: dict[str, dict[str, Any]] = {
             "title": "DNS 핵심",
             "subtitle": "도메인 해석",
             "icon": "dns",
-        },
-    },
-    "keyword_cards": {
-        "required": ["keywords"],
-        "optional": [],
-        "example": {
-            "keywords": ["DNS", "IP", "도메인", "네임서버"],
         },
     },
     "flow_steps": {
@@ -205,33 +182,6 @@ VISUAL_DATA_SCHEMA: dict[str, dict[str, Any]] = {
             "title": "AI 자동화",
             "subtitle": "핵심 개념",
             "detail": "좌우 분할 레이아웃으로 강조",
-        },
-    },
-    "underline_title": {
-        "required": ["title"],
-        "optional": ["subtitle", "label"],
-        "example": {
-            "title": "핵심 포인트",
-            "subtitle": "밑줄 강조 제목",
-            "label": "POINT",
-        },
-    },
-    "side_accent_title": {
-        "required": ["title"],
-        "optional": ["subtitle", "tag"],
-        "example": {
-            "title": "사이드 강조",
-            "subtitle": "왼쪽 액센트 바",
-            "tag": "KEY",
-        },
-    },
-    "glass_cards": {
-        "required": ["items"],
-        "optional": ["title", "icons"],
-        "example": {
-            "title": "글라스 카드",
-            "items": ["항목 1", "항목 2", "항목 3"],
-            "icons": ["🔵", "🟢", "🔴"],
         },
     },
     "border_cards": {
@@ -352,58 +302,7 @@ VISUAL_DATA_SCHEMA: dict[str, dict[str, Any]] = {
             ],
         },
     },
-    "architecture_diagram": {
-        "required": ["nodes"],
-        "optional": ["title", "edges"],
-        "example": {
-            "title": "아키텍처",
-            "nodes": [
-                {"id": "a", "label": "Client", "type": "primary", "x": 10, "y": 40},
-                {"id": "b", "label": "Server", "type": "secondary", "x": 50, "y": 40},
-                {"id": "c", "label": "DB", "type": "storage", "x": 85, "y": 40},
-            ],
-            "edges": [
-                {"from": "a", "to": "b"},
-                {"from": "b", "to": "c"},
-            ],
-        },
-    },
-    "agent_workflow": {
-        "required": ["steps"],
-        "optional": ["title", "agent_name", "current_step", "layout"],
-        "example": {
-            "title": "에이전트 워크플로우",
-            "agent_name": "HCHAIN",
-            "steps": [
-                {"label": "PLAN"},
-                {"label": "RESEARCH"},
-                {"label": "ACTION"},
-                {"label": "VALIDATE"},
-                {"label": "DONE"},
-            ],
-            "current_step": 3,
-            "layout": "horizontal",
-        },
-    },
     # Variant templates (Phase 3 — visual diversity)
-    "keyword_cards_grid": {
-        "required": ["keywords"],
-        "optional": ["title", "descriptions", "icons"],
-        "example": {
-            "title": "핵심 기술",
-            "keywords": ["Docker", "Kubernetes", "CI/CD", "Git"],
-            "descriptions": ["컨테이너화", "오케스트레이션", "자동화 배포", "버전 관리"],
-        },
-    },
-    "keyword_cards_stack": {
-        "required": ["keywords"],
-        "optional": ["title", "descriptions"],
-        "example": {
-            "title": "핵심 개념",
-            "keywords": ["레이어 1", "레이어 2", "레이어 3"],
-            "descriptions": ["첫 번째 설명", "두 번째 설명", "세 번째 설명"],
-        },
-    },
     "timeline_zigzag": {
         "required": ["events"],
         "optional": ["title"],

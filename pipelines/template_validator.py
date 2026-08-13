@@ -11,7 +11,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from template_schema import TEMPLATE_TYPES, VISUAL_DATA_SCHEMA, is_valid_template_type  # type: ignore[import]
+try:
+    from template_schema import TEMPLATE_TYPES, VISUAL_DATA_SCHEMA, is_valid_template_type  # type: ignore[import]
+except ImportError:  # pragma: no cover - package import fallback
+    from pipelines.template_schema import TEMPLATE_TYPES, VISUAL_DATA_SCHEMA, is_valid_template_type  # type: ignore[no-redef]
+try:
+    from template_retirement_compat import is_retired_template_type, retired_template_error  # type: ignore[import]
+except ImportError:  # pragma: no cover - package import fallback
+    from pipelines.template_retirement_compat import is_retired_template_type, retired_template_error  # type: ignore[no-redef]
 
 log = logging.getLogger(__name__)
 
@@ -148,6 +155,12 @@ def validate_scene(scene: dict[str, Any], idx: int | None = None) -> list[str]:
     if not template_type:
         errors.append(
             f"[TEMPLATE_VALIDATION_FAIL] scene={scene_id} reason=missing_template_type"
+        )
+        return errors
+
+    if is_retired_template_type(template_type):
+        errors.append(
+            f"[TEMPLATE_VALIDATION_FAIL] scene={scene_id} reason={retired_template_error(template_type)}"
         )
         return errors
 

@@ -13,18 +13,18 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
 from typing import Literal
 
-import yaml
+try:
+    from video_defaults import load_video_defaults  # type: ignore[import]
+except ImportError:
+    from pipelines.video_defaults import load_video_defaults  # type: ignore[no-redef]
 
 log = logging.getLogger(__name__)
 
 GenerationMode = Literal["template", "ai_motion", "auto"]
 
 _VALID_MODES: frozenset[str] = frozenset({"template", "ai_motion", "auto"})
-_PROJECT_ROOT = Path(__file__).parent.parent
-_CONFIG_PATH = _PROJECT_ROOT / "config" / "video_defaults.yaml"
 
 _AUTO_POLICY: dict[str, GenerationMode] = {
     "study": "template",
@@ -35,10 +35,7 @@ _AUTO_POLICY: dict[str, GenerationMode] = {
 
 
 def _load_config() -> dict:
-    if not _CONFIG_PATH.exists():
-        return {}
-    with _CONFIG_PATH.open(encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    return load_video_defaults()
 
 
 def resolve_mode(video_style: str | None = None) -> GenerationMode:

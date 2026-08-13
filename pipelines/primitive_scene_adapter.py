@@ -136,7 +136,7 @@ _COMPOSITION_RULES: list[tuple[frozenset[str], str]] = [
     (frozenset({"Diagram"}),   "ArchTree"),
     (frozenset({"Highlight"}), "Explain"),
     (frozenset({"CodeBlock"}), "Explain"),
-    (frozenset({"Stats"}),     "KeywordCards"),
+    (frozenset({"Stats"}),     "ListReveal"),
     (frozenset({"Hero"}),      "TitleOpen"),
 ]
 
@@ -350,8 +350,8 @@ class HyperframeSceneBuilder:
         primitives = [p["type"] for p in tree.get("primitives", [])]
         composition = self._mapper.map(primitives)
         if composition == "TitleOpen" and scene_index > 0:
-            composition = "KeywordCards"
-            log.debug("[BUILDER] scene_index=%d: TitleOpen → KeywordCards (position rule)", scene_index)
+            composition = "ListReveal"
+            log.debug("[BUILDER] scene_index=%d: TitleOpen → ListReveal (position rule)", scene_index)
         props = self._props_builder.build(tree, composition, narration_entry)
         fps = tree.get("fps", 24)
 

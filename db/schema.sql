@@ -1,12 +1,8 @@
 -- ============================================================
--- AI-Video DB Schema (PostgreSQL)
--- Runtime DB: PostgreSQL only
--- Destructive migrations are intentionally not used here.
+-- AI-Video DB Schema (PostgreSQL-only)
+-- Runtime single source of truth: n100 PostgreSQL aivideo
 -- ============================================================
 
--- ============================================================
--- T1: prompt_templates
--- ============================================================
 CREATE TABLE IF NOT EXISTS prompt_templates (
     id              BIGSERIAL PRIMARY KEY,
     name            TEXT    NOT NULL UNIQUE,
@@ -14,29 +10,23 @@ CREATE TABLE IF NOT EXISTS prompt_templates (
     role            TEXT,
     language        TEXT    DEFAULT 'ko',
     content         TEXT    NOT NULL,
-    variables       JSONB,
-    is_active       BOOLEAN DEFAULT TRUE,
+    variables       TEXT,
+    is_active       BOOLEAN DEFAULT true,
     created_at      TIMESTAMPTZ DEFAULT now(),
     updated_at      TIMESTAMPTZ DEFAULT now()
 );
 
--- ============================================================
--- T2: visual_templates
--- ============================================================
 CREATE TABLE IF NOT EXISTS visual_templates (
     id              BIGSERIAL PRIMARY KEY,
     template_type   TEXT    NOT NULL UNIQUE,
     composition_id  TEXT    NOT NULL,
-    required_keys   JSONB   NOT NULL,
-    optional_keys   JSONB,
-    example_data    JSONB,
-    is_active       BOOLEAN DEFAULT TRUE,
+    required_keys   TEXT    NOT NULL,
+    optional_keys   TEXT,
+    example_data    TEXT,
+    is_active       BOOLEAN DEFAULT true,
     created_at      TIMESTAMPTZ DEFAULT now()
 );
 
--- ============================================================
--- T3: generation_profiles
--- ============================================================
 CREATE TABLE IF NOT EXISTS generation_profiles (
     id                          BIGSERIAL PRIMARY KEY,
     name                        TEXT    NOT NULL UNIQUE,
@@ -47,44 +37,39 @@ CREATE TABLE IF NOT EXISTS generation_profiles (
     max_total_narration_chars   INTEGER NOT NULL,
     critique_max_runs           INTEGER DEFAULT 2,
     regen_max_runs              INTEGER DEFAULT 2,
-    writer_high_enabled         BOOLEAN DEFAULT FALSE,
-    multi_judge_enabled         BOOLEAN DEFAULT FALSE,
-    fast_path                   BOOLEAN DEFAULT FALSE,
-    is_active                   BOOLEAN DEFAULT TRUE,
+    writer_high_enabled         BOOLEAN DEFAULT false,
+    multi_judge_enabled         BOOLEAN DEFAULT false,
+    fast_path                   BOOLEAN DEFAULT false,
+    is_active                   BOOLEAN DEFAULT true,
     created_at                  TIMESTAMPTZ DEFAULT now()
 );
 
--- ============================================================
--- T4: content_adapter_strategies
--- ============================================================
 CREATE TABLE IF NOT EXISTS content_adapter_strategies (
     id              BIGSERIAL PRIMARY KEY,
     strategy_id     TEXT    NOT NULL UNIQUE,
     content_type    TEXT    NOT NULL,
     scene_count     INTEGER NOT NULL,
-    scene_plans     JSONB   NOT NULL,
+    scene_plans     TEXT    NOT NULL,
     description     TEXT,
-    is_active       BOOLEAN DEFAULT TRUE,
+    is_active       BOOLEAN DEFAULT true,
     created_at      TIMESTAMPTZ DEFAULT now()
 );
 
--- ============================================================
--- T5: runs [P0]
--- ============================================================
 CREATE TABLE IF NOT EXISTS runs (
     id                      BIGSERIAL PRIMARY KEY,
     run_id                  TEXT    NOT NULL UNIQUE,
     topic                   TEXT    NOT NULL,
     profile_name            TEXT,
-    language                TEXT    DEFAULT 'ko',
     started_at              TIMESTAMPTZ NOT NULL,
     completed_at            TIMESTAMPTZ,
     status                  TEXT    DEFAULT 'RUNNING',
     selected_input_path     TEXT,
-    source_files            JSONB,
-    generated_files         JSONB,
+    source_files            TEXT,
+    generated_files         TEXT,
     work_dir                TEXT,
     final_mp4_path          TEXT,
+    created_at              TIMESTAMPTZ DEFAULT now(),
+    language                TEXT    DEFAULT 'ko',
     contents                TEXT,
     target_duration_sec     INTEGER DEFAULT 120,
     mode                    TEXT    DEFAULT 'template',
@@ -93,18 +78,14 @@ CREATE TABLE IF NOT EXISTS runs (
     video_templates_used    TEXT,
     run_type                TEXT    DEFAULT 'TEST',
     tts_provider            TEXT    DEFAULT 'azure',
-    tts_fallback_used       BOOLEAN DEFAULT FALSE,
+    tts_fallback_used       BOOLEAN DEFAULT false,
     tts_voice               TEXT,
-    tts_audio_duration_sec  DOUBLE PRECISION,
-    tts_cache_used          BOOLEAN DEFAULT FALSE,
+    tts_audio_duration_sec  REAL,
+    tts_cache_used          BOOLEAN DEFAULT false,
     error_message           TEXT,
-    queue_order             INTEGER DEFAULT 0,
-    created_at              TIMESTAMPTZ DEFAULT now()
+    queue_order             INTEGER DEFAULT 0
 );
 
--- ============================================================
--- T6: run_stages [P0]
--- ============================================================
 CREATE TABLE IF NOT EXISTS run_stages (
     id              BIGSERIAL PRIMARY KEY,
     run_id          TEXT    NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -112,28 +93,22 @@ CREATE TABLE IF NOT EXISTS run_stages (
     status          TEXT    NOT NULL,
     started_at      TIMESTAMPTZ,
     completed_at    TIMESTAMPTZ,
-    duration_sec    DOUBLE PRECISION,
+    duration_sec    REAL,
     error_msg       TEXT,
     created_at      TIMESTAMPTZ DEFAULT now(),
     UNIQUE (run_id, stage_key)
 );
 
--- ============================================================
--- T7: run_artifacts [P0]
--- ============================================================
 CREATE TABLE IF NOT EXISTS run_artifacts (
     id              BIGSERIAL PRIMARY KEY,
     run_id          TEXT    NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
     artifact_type   TEXT    NOT NULL,
     file_path       TEXT    NOT NULL,
     sha256          TEXT,
-    size_bytes      BIGINT,
+    size_bytes      INTEGER,
     created_at      TIMESTAMPTZ DEFAULT now()
 );
 
--- ============================================================
--- T8: run_scene_plans [P1]
--- ============================================================
 CREATE TABLE IF NOT EXISTS run_scene_plans (
     id              BIGSERIAL PRIMARY KEY,
     run_id          TEXT    NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -144,14 +119,11 @@ CREATE TABLE IF NOT EXISTS run_scene_plans (
     visual_type     TEXT,
     narration_text  TEXT,
     narration_chars INTEGER,
-    template_data   JSONB,
+    template_data   TEXT,
     created_at      TIMESTAMPTZ DEFAULT now(),
     UNIQUE (run_id, scene_index)
 );
 
--- ============================================================
--- T9: run_scripts [P1]
--- ============================================================
 CREATE TABLE IF NOT EXISTS run_scripts (
     id                  BIGSERIAL PRIMARY KEY,
     run_id              TEXT    NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -163,15 +135,12 @@ CREATE TABLE IF NOT EXISTS run_scripts (
     token_estimate      INTEGER,
     language            TEXT    DEFAULT 'ko',
     version             INTEGER DEFAULT 1,
-    quality_score       DOUBLE PRECISION,
+    quality_score       REAL,
     notes               TEXT,
     created_at          TIMESTAMPTZ DEFAULT now(),
     updated_at          TIMESTAMPTZ DEFAULT now()
 );
 
--- ============================================================
--- T10: qa_results [P0]
--- ============================================================
 CREATE TABLE IF NOT EXISTS qa_results (
     id              BIGSERIAL PRIMARY KEY,
     run_id          TEXT    NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -182,12 +151,9 @@ CREATE TABLE IF NOT EXISTS qa_results (
     UNIQUE (run_id, check_name)
 );
 
--- ============================================================
--- T11: llm_calls [P0]
--- ============================================================
 CREATE TABLE IF NOT EXISTS llm_calls (
     id                  BIGSERIAL PRIMARY KEY,
-    run_id              TEXT,
+    run_id              TEXT REFERENCES runs(run_id) ON DELETE CASCADE,
     task_id             TEXT,
     role                TEXT    NOT NULL,
     provider            TEXT    NOT NULL,
@@ -195,14 +161,13 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     status              TEXT    NOT NULL,
     input_chars         INTEGER,
     output_chars        INTEGER,
-    estimated_cost_krw  DOUBLE PRECISION,
-    duration_sec        DOUBLE PRECISION,
+    estimated_cost_krw  REAL,
+    duration_sec        REAL,
     error_msg           TEXT,
-    is_api_provider     BOOLEAN DEFAULT FALSE,
+    is_api_provider     BOOLEAN DEFAULT false,
     called_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Additive migrations for databases initialized by older ai-video versions.
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'ko';
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS contents TEXT;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS target_duration_sec INTEGER DEFAULT 120;
@@ -212,14 +177,9 @@ ALTER TABLE runs ADD COLUMN IF NOT EXISTS video_template TEXT;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS video_templates_used TEXT;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS run_type TEXT DEFAULT 'TEST';
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS tts_provider TEXT DEFAULT 'azure';
-ALTER TABLE runs ADD COLUMN IF NOT EXISTS tts_fallback_used BOOLEAN DEFAULT FALSE;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS tts_fallback_used BOOLEAN DEFAULT false;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS tts_voice TEXT;
-ALTER TABLE runs ADD COLUMN IF NOT EXISTS tts_audio_duration_sec DOUBLE PRECISION;
-ALTER TABLE runs ADD COLUMN IF NOT EXISTS tts_cache_used BOOLEAN DEFAULT FALSE;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS tts_audio_duration_sec REAL;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS tts_cache_used BOOLEAN DEFAULT false;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS error_message TEXT;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS queue_order INTEGER DEFAULT 0;
-
-CREATE INDEX IF NOT EXISTS idx_runs_status_queue ON runs (status, queue_order, created_at);
-CREATE INDEX IF NOT EXISTS idx_runs_started_at ON runs (started_at DESC);
-CREATE INDEX IF NOT EXISTS idx_run_stages_run_id ON run_stages (run_id);
-CREATE INDEX IF NOT EXISTS idx_run_artifacts_run_id ON run_artifacts (run_id);

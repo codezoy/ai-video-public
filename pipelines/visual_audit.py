@@ -46,7 +46,6 @@ _TEMPLATE_TO_COMPOSITION: dict[str, str] = {
     "explain":          "Explain",
     "summary":          "SummaryCard",
     "summary_card":     "SummaryCard",
-    "keyword_cards":    "SummaryCard",
     "code":             "Explain",
     "card":             "SummaryCard",
     "architecture_tree": "Diagram",
@@ -70,7 +69,6 @@ _TEMPLATE_EXTRA_PRIMITIVES: dict[str, list[str]] = {
     "bullet_list":   ["Highlight"],
     "summary":       ["CTA"],
     "summary_card":  ["Summary", "CTA"],
-    "keyword_cards": ["Stats"],
     "compare":          ["Compare"],
     "compare_two":      ["Compare"],
     "quote_highlight":  ["Quote"],
@@ -105,7 +103,7 @@ def _normalize_scene(scene: dict[str, Any]) -> dict[str, Any]:
     bullet_texts = [b["text"] if isinstance(b, dict) else str(b) for b in bullets_raw]
 
     vd: dict[str, Any] = scene.get("visual_data") or {}
-    # keyword_cards store extra content as keywords — count as bullets
+    # Templates with keyword-style visual_data store extra content as keywords.
     kw = vd.get("keywords", [])
     if kw:
         bullet_texts = bullet_texts + [str(k) for k in kw]

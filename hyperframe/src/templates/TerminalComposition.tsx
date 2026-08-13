@@ -4,6 +4,7 @@ import { colors, typography, spacing, radius, shadow, fonts } from "../theme/des
 import { fadeIn, slideUp } from "../motion/primitives";
 import { SAFE_AREA } from "../lib/safearea";
 import { CaptionOverlay } from "../components/CaptionOverlay";
+import type { CaptionSegment } from "../types/scenes";
 
 type LineStatus = "command" | "output" | "success" | "warning" | "error";
 
@@ -17,7 +18,7 @@ interface TerminalProps {
   prompt?: string;
   lines: TerminalLine[];
   typing?: boolean;
-  captionSegments?: { text: string; start: number; end: number }[] | null;
+  captionSegments?: CaptionSegment[] | null;
   durationInFrames?: number;
 }
 

@@ -71,6 +71,14 @@ function Dashboard({ runs, go, openRun, error }) {
 
 /* ---------------- Generate ---------------- */
 const PROFILE_KO = { LECTURE: '강의형', SHORTS: '쇼츠형' };
+const PROMPT_TEMPLATE_LABELS = {
+  writer_system: '일반 강의',
+  'writer_system.md': '일반 강의',
+};
+function promptTemplateLabel(name) {
+  if (!name) return '';
+  return PROMPT_TEMPLATE_LABELS[name] || PROMPT_TEMPLATE_LABELS[String(name).replace(/\.md$/, '')] || name;
+}
 const GENERATE_TTS_PROVIDERS = [
   ['chatterbox', 'chatterbox (default)'],
   ['azure', 'azure'],
@@ -158,7 +166,7 @@ function Generate({ onCreate, templates = [], profiles = [], error, prefill, onP
           <div className="field">
             <label>프롬프트 템플릿</label>
             <select className="select" value={template} onChange={e=>setTemplate(e.target.value)}>
-              {templates.map(t=><option key={t.id} value={t.name} disabled={t.size_bytes === 0}>{t.name}{t.size_bytes === 0 ? ' (비어있음)' : ''}</option>)}
+              {templates.map(t=><option key={t.id} value={t.name} disabled={t.size_bytes === 0}>{promptTemplateLabel(t.name)}{t.size_bytes === 0 ? ' (비어있음)' : ''}</option>)}
             </select>
           </div>
           <div className="field">
@@ -571,7 +579,14 @@ function RunDetail({ run, loading, error, sub, setSub, onRetry, onRegenerate, ba
   );
   const states = stageStates(run);
   const pct = progressPct(run);
-  const copyId = () => { navigator.clipboard?.writeText(run.id); toast({kind:'check',title:'Run ID copied',body:run.id}); };
+  const canCopyRunId = !!normalizeCopyText(run.id);
+  const copyId = async (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    const result = await copyTextToClipboard(run.id, { label: 'Run ID' });
+    if (result.ok) toast({kind:'check',title:'Run ID copied',body:result.text});
+    else toast({kind:'error',title:'Run ID copy failed',body:result.error});
+  };
   const [cancelling, setCancelling] = uS(false);
   const [deleting, setDeleting] = uS(false);
   async function handleCancel() {
@@ -638,8 +653,8 @@ function RunDetail({ run, loading, error, sub, setSub, onRetry, onRegenerate, ba
       <div className="card pad" style={{marginBottom:18}}>
         <div className="detail-head" style={{margin:0,alignItems:'center'}}>
           <dl className="kv" style={{flex:1}}>
-            <dt>Run ID</dt><dd className="idval">{run.id}<button className="copybtn" onClick={copyId} title="Copy"><Icon name="copy" size={14}/></button></dd>
-            <dt>Prompt Template</dt><dd>{run.prompt_filename || <span className="muted">—</span>}</dd>
+            <dt>Run ID</dt><dd className="idval">{run.id}<button className="copybtn" onClick={copyId} title="Copy run ID" aria-label="Copy run ID" disabled={!canCopyRunId}><Icon name="copy" size={14}/></button></dd>
+            <dt>Prompt Template</dt><dd>{run.prompt_filename ? promptTemplateLabel(run.prompt_filename) : <span className="muted">—</span>}</dd>
             <dt>Video Template</dt><dd>{run.video_template ? (
               run.video_templates_used && run.video_templates_used !== `["${run.video_template}"]`
                 ? (() => { try { const a=JSON.parse(run.video_templates_used); return a.join(', '); } catch(e){ return run.video_template; } })()

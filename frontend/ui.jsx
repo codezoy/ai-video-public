@@ -42,6 +42,31 @@ function Icon({ name, size=18, className='', style }) {
   );
 }
 
+function normalizeCopyText(value) {
+  if (value == null) return '';
+  const text = typeof value === 'string' ? value : String(value);
+  return text.trim().length ? text : '';
+}
+
+async function copyTextToClipboard(value, { label = 'Value' } = {}) {
+  const text = normalizeCopyText(value);
+  if (!text) return { ok: false, reason: 'invalid', error: `${label} is empty`, text: '' };
+  if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+    return { ok: false, reason: 'unsupported', error: 'Clipboard API is not available', text };
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    return { ok: true, text };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: 'write-failed',
+      error: error && error.message ? error.message : 'Clipboard write failed',
+      text,
+    };
+  }
+}
+
 function StatusPill({ status }) {
   const label = { running:'RUNNING', done:'DONE', failed:'FAILED', cancelled:'CANCELLED', waiting:'QUEUED', queued:'QUEUED' }[status] || status;
   return <span className={`pill ${status}`}><span className="pdot" />{label}</span>;
@@ -170,4 +195,4 @@ function Toasts({ toasts, onOpen }) {
   );
 }
 
-Object.assign(window, { Icon, StatusPill, Sidebar, BottomNav, MobileTop, Pipeline, LogView, Toasts, NAV });
+Object.assign(window, { Icon, StatusPill, Sidebar, BottomNav, MobileTop, Pipeline, LogView, Toasts, NAV, normalizeCopyText, copyTextToClipboard });

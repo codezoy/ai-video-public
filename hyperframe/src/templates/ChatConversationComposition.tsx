@@ -4,6 +4,7 @@ import { colors, typography, spacing, radius, shadow, fonts } from "../theme/des
 import { fadeIn, slideUp } from "../motion/primitives";
 import { SAFE_AREA } from "../lib/safearea";
 import { CaptionOverlay } from "../components/CaptionOverlay";
+import type { CaptionSegment } from "../types/scenes";
 
 type Role = "user" | "assistant" | "system";
 
@@ -16,7 +17,7 @@ interface ChatMessage {
 interface ChatConversationProps {
   title: string;
   messages: ChatMessage[];
-  captionSegments?: { text: string; start: number; end: number }[] | null;
+  captionSegments?: CaptionSegment[] | null;
   durationInFrames?: number;
 }
 

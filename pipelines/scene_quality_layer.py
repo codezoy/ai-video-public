@@ -121,9 +121,9 @@ def _apply_rule_02(scene: dict, report: list) -> bool:
     vd = scene.get("visual_data") or {}
     corrected = False
 
-    # keyword_cards: keywords 리스트의 각 항목
-    if scene.get("template_type") == "keyword_cards":
-        keywords = vd.get("keywords", [])
+    # Keyword-like templates: keywords/tags/items 리스트의 각 항목
+    if scene.get("template_type") in {"pill_tags", "border_cards"}:
+        keywords = vd.get("keywords") or vd.get("tags") or vd.get("items") or []
         if isinstance(keywords, list):
             new_keywords = []
             for kw in keywords:
@@ -153,7 +153,8 @@ def _apply_rule_02(scene: dict, report: list) -> bool:
                     log.warning("RULE-02: scene=%s keyword WARN length=%d", scene.get("id"), len(kw))
                 else:
                     new_keywords.append(kw)
-            vd["keywords"] = new_keywords
+            target_key = "tags" if scene.get("template_type") == "pill_tags" else "items"
+            vd[target_key] = new_keywords
 
     # flow_steps / summary_card / timeline: 각 항목의 body/description
     body_fields_map = {
@@ -239,7 +240,8 @@ def _apply_rule_03(scene: dict, report: list) -> bool:
         return " · ".join(kws) if kws else scene_.get("title", "핵심 내용")
 
     list_keys = {
-        "keyword_cards": "keywords",
+        "pill_tags": "tags",
+        "border_cards": "items",
         "flow_steps": "steps",
         "timeline": "events",
         "summary_card": "takeaways",
