@@ -1,11 +1,22 @@
-"""Development static server with cache disabled for mutable frontend assets."""
+"""Static server with cache disabled for mutable frontend assets."""
 
 from __future__ import annotations
 
 import argparse
+import os
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
 
 
 class NoCacheRequestHandler(SimpleHTTPRequestHandler):
@@ -19,7 +30,7 @@ class NoCacheRequestHandler(SimpleHTTPRequestHandler):
 def main() -> None:
     parser = argparse.ArgumentParser(description="Serve the frontend without browser asset caching.")
     parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=3901)
+    parser.add_argument("--port", type=int, default=_env_int("AIVIDEO_FRONTEND_PORT", 3902))
     parser.add_argument("--directory", default=str(Path(__file__).resolve().parent))
     args = parser.parse_args()
 

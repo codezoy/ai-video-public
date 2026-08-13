@@ -1,4 +1,4 @@
-"""AI-Video FastAPI application — port 8901."""
+"""AI-Video FastAPI application — production default port 8902."""
 from __future__ import annotations
 
 import logging

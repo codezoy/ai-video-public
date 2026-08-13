@@ -47,9 +47,10 @@ const LANGS = ['한국어','English','中文'];
 const LANG_TO_API = { '한국어':'ko', 'English':'en', '中文':'zh-CN' };
 
 function resolveApiBase() {
+  if (window.AIVIDEO_API_BASE) return String(window.AIVIDEO_API_BASE).replace(/\/+$/, '');
   const host = window.location.hostname;
-  if (host === 'localhost' || host === '127.0.0.1' || host === '') return 'http://localhost:8901';
-  return `${window.location.protocol}//${host}:8901`;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '') return 'http://localhost:8902';
+  return `${window.location.protocol}//${host}:8902`;
 }
 
 const API_BASE = resolveApiBase();
