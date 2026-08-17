@@ -16,13 +16,17 @@ AI-Video는 템플릿, TTS, 구조화된 콘텐츠를 연결해 입력에서 대
 
 ## 데모
 
+### AI Video 제작 과정
+
 ![AI-Video 밝은 Guided Generate UI 데모](docs/demo/ai-video-guided-generate-light-demo.gif)
 
-밝은 Guided Generate UI의 화면 흐름을 보여주는 데모입니다. 이 GIF는 실제 생성을 실행하지 않고 UI 흐름을 보여줍니다.
+실제 생성 실행 없이 Guided Generate UI 흐름을 보여주는 데모입니다. dark/black 도입부를 제거해 white UI Dashboard에서 시작합니다.
+
+### 실제 생성 결과
 
 ![피싱 메일 사고 대응 실제 생성 영상 미리보기](docs/demo/phishing-email-incident-response-preview.gif)
 
-실제 생성 예시입니다. 원본 5개 지점에서 2초씩 추출한 10초 무음 preview이며, 하단 bar는 전체 영상 위치를 나타냅니다.
+실제 생성 결과에서 화면 전환이 안정적인 5개 구간을 2초씩 연결한 10초 무음 미리보기입니다. 하단 bar는 원본 영상 위치가 아니라 GIF 재생 진행률을 나타내며, 처음부터 끝까지 연속적으로 증가합니다.
 
 [내레이션이 포함된 전체 MP4 다운로드](docs/demo/phishing-email-incident-response.mp4)
 
